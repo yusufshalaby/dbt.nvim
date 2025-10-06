@@ -50,7 +50,7 @@ end
 
 --- Finds the dbt target directory from dbt_project.yml and constructs the manifest path.
 --- Falls back to the default path if the command fails.
---- @return string The path to the manifest.json file.
+--- @return string path The path to the manifest.json file.
 local function _get_manifest_path()
 	-- The default path if no custom target-path is found in dbt_project.yml
 	local default_path = "target/manifest.json"
@@ -113,41 +113,42 @@ end
 --- PRIVATE HELPER: Runs a jq filter and processes the output into Quickfix items.
 --- @param filter string The jq filter to use.
 --- @param args table List of arguments to pass to jq after the filter (e.g., args for --arg).
---- @param item_processor function Function to convert one line of output into a qf_item.
---- @param title_func function Function that returns the title string for the Quickfix list.
-local function _run_filter_and_process(filter, args, item_processor, title_func)
+--- @return table | nil lines Results from jq parsing of manifest
+local function _run_filter(filter, args)
 	local manifest_path = _get_manifest_path()
-	local qf_items = {}
 
-	-- 1. Construct the full arguments list
 	table.insert(args, filter) -- Insert the filter
 	table.insert(args, manifest_path) -- Insert the file path
 
-	-- 2. Execute jq
 	local lines, exit_code, err = _run_sync("jq", args)
 
-	-- 3. Check for execution success
 	if exit_code == 0 and not err and lines and #lines > 0 then
-		-- 4. Process lines into Quickfix items
-		for _, line in ipairs(lines) do
-			if #line > 0 then
-				local item = item_processor(line)
-				if item then
-					table.insert(qf_items, item)
-				end
+		return lines
+	else
+		_notify_error(exit_code, err, manifest_path)
+		return nil
+	end
+end
+
+--- @param item_processor function Function to convert one line of output into a qf_item.
+--- @param title_func function Function that returns the title string for the Quickfix list.
+local function _populate_quickfix(lines, item_processor, title_func)
+	local qf_items = {}
+	for _, line in ipairs(lines) do
+		if #line > 0 then
+			local item = item_processor(line)
+			if item then
+				table.insert(qf_items, item)
 			end
 		end
+	end
 
-		-- 5. Open Quickfix if items were found
-		if #qf_items > 0 then
-			_open_quickfix(qf_items, title_func(true))
-		else
-			-- Handle case where jq ran successfully but returned no results
-			vim.notify("dbt.nvim: No resources found matching the filter.", vim.log.levels.INFO)
-		end
+	-- 5. Open Quickfix if items were found
+	if #qf_items > 0 then
+		_open_quickfix(qf_items, title_func(true))
 	else
-		-- 6. Handle failure
-		_notify_error(exit_code, err, manifest_path)
+		-- Handle case where jq ran successfully but returned no results
+		vim.notify("dbt.nvim: No resources found matching the filter.", vim.log.levels.INFO)
 	end
 end
 
@@ -164,14 +165,12 @@ function M.get_models()
 		end
 	end
 
-	_run_filter_and_process(
-		filters.models,
-		{ "-r", "-c" }, -- Extra jq arg for ensuring compact output (needed for JSON decoding)
-		processor,
-		function()
+	local lines = _run_filter(filters.models, { "-r", "-c" })
+	if lines then
+		_populate_quickfix(lines, processor, function()
 			return "dbt models"
-		end
-	)
+		end)
+	end
 end
 
 --- Gets the path of the current buffer relative to the CWD (project root).
@@ -213,13 +212,12 @@ function M.get_children()
 		return "dbt Children of: " .. model_name
 	end
 
-	_run_filter_and_process(
+	local lines = _run_filter(
 		filters.children,
 		-- Add -r and -c for compact JSON output, and the --arg for the file path
-		{ "-r", "-c", "--arg", "filepath", current_file },
-		processor,
-		title_func
+		{ "-r", "-c", "--arg", "filepath", current_file }
 	)
+	_populate_quickfix(lines, processor, title_func)
 end
 
 function M.setup(opts)

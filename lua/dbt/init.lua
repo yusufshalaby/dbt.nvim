@@ -18,10 +18,6 @@ local filters = {
 	']],
 }
 
---- @class Model
---- @field name string
---- @field path string
-
 --- @param cmd string The command name (e.g., "jq").
 --- @param args table List of arguments (e.g., {'.filter', 'file.json'}).
 --- @return table|nil lines List of strings representing stdout output, or nil on error.
@@ -130,20 +126,9 @@ local function _run_filter(filter, args)
 	end
 end
 
---- @param item_processor function Function to convert one line of output into a qf_item.
+--- @param qf_items table
 --- @param title_func function Function that returns the title string for the Quickfix list.
-local function _populate_quickfix(lines, item_processor, title_func)
-	local qf_items = {}
-	for _, line in ipairs(lines) do
-		if #line > 0 then
-			local item = item_processor(line)
-			if item then
-				table.insert(qf_items, item)
-			end
-		end
-	end
-
-	-- 5. Open Quickfix if items were found
+local function _populate_quickfix(qf_items, title_func)
 	if #qf_items > 0 then
 		_open_quickfix(qf_items, title_func(true))
 	else
@@ -152,22 +137,32 @@ local function _populate_quickfix(lines, item_processor, title_func)
 	end
 end
 
---- Gets all dbt models from the manifest and loads them into the Quickfix list.
-function M.get_models()
-	local processor = function(line)
-		local success, entry = pcall(vim.json.decode, line)
-		if success and entry and entry.name and entry.path then
-			return {
-				filename = entry.path,
-				text = entry.name,
-				lnum = 1,
-			}
+--- @param lines table<string>
+--- @return table
+local function _model_processor(lines)
+	local models = {}
+	for _, line in ipairs(lines) do
+		if #line > 0 then
+			local success, entry = pcall(vim.json.decode, line)
+			if success and entry and entry.name and entry.path then
+				table.insert(models, {
+					filename = entry.path,
+					text = entry.name, -- Display model name
+					lnum = 1,
+				})
+			end
 		end
 	end
+	return models
+end
 
+--- Gets all dbt models from the manifest and loads them into the Quickfix list.
+function M.get_models()
 	local lines = _run_filter(filters.models, { "-r", "-c" })
-	if lines then
-		_populate_quickfix(lines, processor, function()
+
+	if lines and #lines > 0 then
+		local models = _model_processor(lines)
+		_populate_quickfix(models, function()
 			return "dbt models"
 		end)
 	end
@@ -192,18 +187,6 @@ function M.get_children()
 		return
 	end
 
-	-- Processor for the children filter (NOW returns JSON objects)
-	local processor = function(line)
-		local success, entry = pcall(vim.json.decode, line)
-		if success and entry and entry.name and entry.path then
-			return {
-				filename = entry.path,
-				text = entry.name, -- Display model name
-				lnum = 1,
-			}
-		end
-	end
-
 	local title_func = function(success)
 		local model_name = vim.fn.fnamemodify(current_file, ":t:r")
 		if not success then
@@ -217,7 +200,10 @@ function M.get_children()
 		-- Add -r and -c for compact JSON output, and the --arg for the file path
 		{ "-r", "-c", "--arg", "filepath", current_file }
 	)
-	_populate_quickfix(lines, processor, title_func)
+	if lines and #lines > 0 then
+		local models = _model_processor(lines)
+		_populate_quickfix(models, title_func)
+	end
 end
 
 function M.setup(opts)

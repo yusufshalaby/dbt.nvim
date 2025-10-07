@@ -4,12 +4,13 @@
 
 ---@class Content
 ---@field type "model" | "header" | "blank"
----@field value? string | Model
+---@field value? "children" | "parents" | Model
 ---@field text? string
 
 ---@class dbt.PersistentWindow
 ---@field public name string
 ---@field _bufnr integer
+---@field _refwin integer
 ---@field _win? integer
 ---@field _children table<Model>
 ---@field _parents table<Model>
@@ -23,6 +24,7 @@ ui.persistent_window_instances = {}
 
 ---@class dbt.PersistentWindowOpts
 ---@field name string
+---@field refwin integer
 
 ---@param opts dbt.PersistentWindowOpts
 function PersistentWindow:new(opts)
@@ -30,6 +32,7 @@ function PersistentWindow:new(opts)
 	local bufnr = self:buffer(opts)
 	return setmetatable({
 		name = opts.name,
+		_refwin = opts.refwin,
 		_bufnr = bufnr,
 		_children = {},
 		_parents = {},
@@ -96,6 +99,15 @@ function PersistentWindow:toggle_section(section)
 	self:render_content()
 end
 
+--- @param model Model
+function PersistentWindow:go_to_model(model)
+	local modelbufnr = vim.fn.bufnr(model.path, true)
+	if modelbufnr > 0 then
+		vim.api.nvim_win_set_buf(self._refwin, modelbufnr)
+		-- TODO error handling
+	end
+end
+
 function PersistentWindow:user_action()
 	local win_cursor = vim.api.nvim_win_get_cursor(self._win)
 	local current_line = win_cursor[1]
@@ -107,6 +119,8 @@ function PersistentWindow:user_action()
 
 	if content.type == "header" then
 		self:toggle_section(content.value)
+	elseif content.type == "model" then
+		self:go_to_model(content.value)
 	end
 end
 
@@ -181,7 +195,7 @@ end
 
 --- @param opts dbt.PersistentWindowOpts
 function ui.new(opts)
-	return PersistentWindow:new({ name = opts.name })
+	return PersistentWindow:new({ name = opts.name, refwin = opts.refwin })
 end
 
 return ui

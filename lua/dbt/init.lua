@@ -233,7 +233,9 @@ function M.split()
 	local children = M.get_children()
 	local parents = M.get_parents()
 	local factory = require("dbt.ui")
-	local win = factory.new({ name = "yusuf" })
+
+	local curwin = vim.api.nvim_get_current_win()
+	local win = factory.new({ name = "yusuf", refwin = curwin })
 	win:open()
 
 	if parents then

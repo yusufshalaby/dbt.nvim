@@ -17,7 +17,9 @@
 ---@field _parents_collapsed boolean
 ---@field _index_map table<Content>
 local PersistentWindow = {}
-Persistent_window_instances = {}
+
+local ui = {}
+ui.persistent_window_instances = {}
 
 ---@class dbt.PersistentWindowOpts
 ---@field name string
@@ -45,7 +47,7 @@ function PersistentWindow:open()
 	vim.api.nvim_set_option_value("relativenumber", false, { win = self._win })
 	vim.api.nvim_set_option_value("spell", false, { win = self._win })
 	vim.api.nvim_set_option_value("winfixwidth", true, { win = self._win })
-	Persistent_window_instances[self._win] = self
+	ui.persistent_window_instances[self._win] = self
 end
 
 --- Creates and configures persistent read only buffer
@@ -108,13 +110,6 @@ function PersistentWindow:user_action()
 	end
 end
 
---- Utility function to get the instance from a window ID for keymaps
--- @param win_id number The Neovim window ID
--- @return PersistentWindow|nil
-function PersistentWindow.get_instance_from_win(win_id)
-	return Persistent_window_instances[win_id]
-end
-
 --- Sets up the <CR> key binding for toggling sections.
 function PersistentWindow:setup_interactions()
 	-- Clear existing maps (good practice)
@@ -166,14 +161,19 @@ function PersistentWindow:render_content()
 	self:setup_interactions()
 end
 
-local ui = {}
+--- Utility function to get the instance from a window ID for keymaps
+-- @param win_id number The Neovim window ID
+-- @return PersistentWindow|nil
+function ui.get_instance_from_win(win_id)
+	return ui.persistent_window_instances[win_id]
+end
 
 --- STATIC HANDLER: Centralized function called directly by the keymap.
 -- It retrieves the instance and calls the action method.
 -- This cleans up the logic inside the setup_interactions string.
 -- @param win_id number The window ID passed by the keymap execution.
 ui.handle_key_press = function(win_id)
-	local inst = PersistentWindow.get_instance_from_win(win_id)
+	local inst = ui.get_instance_from_win(win_id)
 	if inst then
 		inst:user_action()
 	end

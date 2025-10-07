@@ -16,6 +16,19 @@ local filters = {
 		      "path": $manifest.nodes[.].original_file_path
 	      }
 	']],
+	parents = [['
+	    . as $manifest |
+	    (.nodes | to_entries[] |
+	    select(.value.original_file_path == $filepath) |
+	    .key) as $child_model_id |
+	    (.parent_map[$child_model_id] | 
+	    map(select(startswith("model.")))) as $parent_ids |
+	      $parent_ids[] | 
+	      {
+		      "name": $manifest.nodes[.].name,
+		      "path": $manifest.nodes[.].original_file_path
+	      }
+	']],
 }
 
 --- @param cmd string The command name (e.g., "jq").
@@ -146,9 +159,8 @@ local function _model_processor(lines)
 			local success, entry = pcall(vim.json.decode, line)
 			if success and entry and entry.name and entry.path then
 				table.insert(models, {
-					filename = entry.path,
-					text = entry.name, -- Display model name
-					lnum = 1,
+					path = entry.path,
+					name = entry.name, -- Display model name
 				})
 			end
 		end
@@ -169,7 +181,7 @@ function M.get_models()
 end
 
 --- Gets the path of the current buffer relative to the CWD (project root).
---- @return string|nil The relative file path, or nil if the buffer is scratch/unnamed.
+--- @return string|nil path The relative file path, or nil if the buffer is scratch/unnamed.
 function M.get_current_model_path()
 	-- Get path relative to CWD. This is crucial for matching manifest paths.
 	local path = vim.fn.fnamemodify(vim.fn.bufname(), ":.")
@@ -180,19 +192,11 @@ function M.get_current_model_path()
 	return path
 end
 
---- Gets the immediate children (dependents) of the current model and loads them into the Quickfix list.
+--- Gets the immediate children (dependents) of the current model
 function M.get_children()
 	local current_file = M.get_current_model_path()
 	if not current_file then
 		return
-	end
-
-	local title_func = function(success)
-		local model_name = vim.fn.fnamemodify(current_file, ":t:r")
-		if not success then
-			return "dbt Children Error: " .. model_name
-		end
-		return "dbt Children of: " .. model_name
 	end
 
 	local lines = _run_filter(
@@ -202,8 +206,44 @@ function M.get_children()
 	)
 	if lines and #lines > 0 then
 		local models = _model_processor(lines)
-		_populate_quickfix(models, title_func)
+		return models
 	end
+	return {}
+end
+
+function M.get_parents()
+	local current_file = M.get_current_model_path()
+	if not current_file then
+		return
+	end
+
+	local lines = _run_filter(
+		filters.parents,
+		-- Add -r and -c for compact JSON output, and the --arg for the file path
+		{ "-r", "-c", "--arg", "filepath", current_file }
+	)
+	if lines and #lines > 0 then
+		local models = _model_processor(lines)
+		return models
+	end
+	return {}
+end
+
+function M.split()
+	local children = M.get_children()
+	local parents = M.get_parents()
+	local factory = require("dbt.ui")
+	local win = factory.new({ name = "yusuf" })
+	win:open()
+
+	if parents then
+		win:set_models(parents, "parents")
+	end
+	if children then
+		win:set_models(children, "children")
+	end
+
+	win:render_content()
 end
 
 function M.setup(opts)

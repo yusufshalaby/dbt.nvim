@@ -54,7 +54,8 @@ function PersistentWindow:open()
 	vim.api.nvim_set_option_value("winfixwidth", true, { win = self._win })
 	ui.persistent_window_instances[self._win] = self
 	self:setup_autocmds()
-	self:render_content()
+	vim.api.nvim_set_current_win(self._refwin)
+	self:update()
 end
 
 --- Creates and configures persistent read only buffer

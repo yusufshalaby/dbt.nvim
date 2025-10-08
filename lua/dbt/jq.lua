@@ -8,6 +8,7 @@ M.filters = {
 	    . as $manifest |
 	    (.nodes | to_entries[] |
 	    select(.value.original_file_path == $filepath) |
+	    select(.key | startswith("model.") or startswith("seed.")) |
 	    .key) as $parent_model_id |
 	    (.child_map[$parent_model_id] | 
 	    map(select(startswith("model.")))) as $child_ids |
@@ -21,9 +22,10 @@ M.filters = {
 	    . as $manifest |
 	    (.nodes | to_entries[] |
 	    select(.value.original_file_path == $filepath) |
+	    select(.key | startswith("model.") or startswith("seed.")) |
 	    .key) as $child_model_id |
 	    (.parent_map[$child_model_id] | 
-	    map(select(startswith("model.")))) as $parent_ids |
+	    map(select(startswith("model.") or startswith("seed.")))) as $parent_ids |
 	      $parent_ids[] | 
 	      {
 		      "name": $manifest.nodes[.].name,

@@ -12,6 +12,7 @@
 ---@field _bufnr integer
 ---@field _refwin integer
 ---@field _win? integer
+---@field _autocmd_group string
 ---@field _children table<Model>
 ---@field _parents table<Model>
 ---@field _children_collapsed boolean
@@ -34,6 +35,7 @@ function PersistentWindow:new(opts)
 		name = opts.name,
 		_refwin = opts.refwin,
 		_bufnr = bufnr,
+		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
 		_children = {},
 		_parents = {},
 		_children_collapsed = false,
@@ -51,6 +53,8 @@ function PersistentWindow:open()
 	vim.api.nvim_set_option_value("spell", false, { win = self._win })
 	vim.api.nvim_set_option_value("winfixwidth", true, { win = self._win })
 	ui.persistent_window_instances[self._win] = self
+	self:setup_autocmds()
+	self:render_content()
 end
 
 --- Creates and configures persistent read only buffer
@@ -180,6 +184,34 @@ function PersistentWindow:render_content()
 	self._index_map = index_map
 
 	self:setup_interactions()
+end
+
+function PersistentWindow:dispose()
+	pcall(vim.api.nvim_del_augroup_by_name, self._autocmd_group)
+	ui.persistent_window_instances[self._win] = nil
+	vim.api.nvim_buf_delete(self._bufnr, { force = true })
+end
+
+function PersistentWindow:setup_autocmds()
+	vim.api.nvim_create_augroup(self._autocmd_group, { clear = true })
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		group = self._autocmd_group,
+		pattern = "*",
+		callback = function()
+			local win = vim.api.nvim_get_current_win()
+			if win == self._refwin then
+				self:update()
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = self._autocmd_group,
+		pattern = tostring(self._win),
+		callback = function()
+			self:dispose()
+		end,
+	})
 end
 
 --- Utility function to get the instance from a window ID for keymaps

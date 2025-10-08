@@ -85,6 +85,13 @@ function PersistentWindow:set_models(models, type)
 	end
 end
 
+function PersistentWindow:update()
+	local jq = require("dbt.jq")
+	self._parents = jq.get_parents(self._refwin)
+	self._children = jq.get_children(self._refwin)
+	self:render_content()
+end
+
 --- @param section "children" | "parents"
 function PersistentWindow:toggle_section(section)
 	if section == "parents" then

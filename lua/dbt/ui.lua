@@ -1,9 +1,10 @@
 ---@class Model
 ---@field name string
 ---@field path string
+---@field key string
 
 ---@class Content
----@field type "model" | "header" | "blank"
+---@field type "model" | "header" | "noaction"
 ---@field value? "children" | "parents" | Model
 ---@field text? string
 
@@ -18,6 +19,7 @@
 ---@field _children_collapsed boolean
 ---@field _parents_collapsed boolean
 ---@field _index_map table<Content>
+---@field _entities table<Model>
 local PersistentWindow = {}
 
 local ui = {}
@@ -40,7 +42,7 @@ function PersistentWindow:new(opts)
 		_parents = {},
 		_children_collapsed = false,
 		_parents_collapsed = false,
-		_index_map = { "blank" },
+		_index_map = { "noaction" },
 	}, self)
 end
 
@@ -92,8 +94,9 @@ end
 
 function PersistentWindow:update()
 	local jq = require("dbt.jq")
-	self._parents = jq.get_parents(self._refwin)
-	self._children = jq.get_children(self._refwin)
+	self._entities = jq.get_models(self._refwin)
+	self._parents = jq.get_parents(self._entities[1].key)
+	self._children = jq.get_children(self._entities[1].key)
 	self:render_content()
 end
 
@@ -173,9 +176,19 @@ function PersistentWindow:render_content()
 		end
 	end
 
+	if self._entities and #self._entities > 0 then
+		if string.match(self._entities[1].key, "model.") then
+			local title = string.format("Model: %s", self._entities[1].name)
+			table.insert(text, title)
+			table.insert(index_map, { type = "noaction" })
+			table.insert(text, "")
+			table.insert(index_map, { type = "noaction" })
+		end
+	end
+
 	format_models(text, "parents", self._parents, self._parents_collapsed)
 	table.insert(text, "")
-	table.insert(index_map, { type = "blank" })
+	table.insert(index_map, { type = "noaction" })
 	format_models(text, "children", self._children, self._children_collapsed)
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = self._bufnr })

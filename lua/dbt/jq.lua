@@ -2,32 +2,31 @@ local M = {}
 local utils = require("dbt.utils")
 
 M.filters = {
+	path_to_model = [['
+		(.nodes | to_entries[] | select(.value.original_file_path == $filepath) |
+		select(.key | startswith("model.") or startswith("seed.")) |
+		{ "key": .key, "name": .value.name, "path": .value.original_file_path})
+	']],
 	models = '\'.nodes | with_entries(select(.key | startswith("model."))) | .[] | {"name":.name, "path": .original_file_path}\'',
 	seeds = '.nodes | with_entries(select(.key | startswith("seed."))) | .[].name',
 	children = [['
 	    . as $manifest |
-	    (.nodes | to_entries[] |
-	    select(.value.original_file_path == $filepath) |
-	    select(.key | startswith("model.") or startswith("seed.")) |
-	    .key) as $parent_model_id |
 	    (.child_map[$parent_model_id] | 
 	    map(select(startswith("model.")))) as $child_ids |
 	      $child_ids[] | 
 	      {
+		      "key": .,
 		      "name": $manifest.nodes[.].name,
 		      "path": $manifest.nodes[.].original_file_path
 	      }
 	']],
 	parents = [['
 	    . as $manifest |
-	    (.nodes | to_entries[] |
-	    select(.value.original_file_path == $filepath) |
-	    select(.key | startswith("model.") or startswith("seed.")) |
-	    .key) as $child_model_id |
 	    (.parent_map[$child_model_id] | 
 	    map(select(startswith("model.") or startswith("seed.")))) as $parent_ids |
 	      $parent_ids[] | 
 	      {
+		      "key": .,
 		      "name": $manifest.nodes[.].name,
 		      "path": $manifest.nodes[.].original_file_path
 	      }
@@ -63,7 +62,8 @@ local function _model_processor(lines)
 			if success and entry and entry.name and entry.path then
 				table.insert(models, {
 					path = entry.path,
-					name = entry.name, -- Display model name
+					name = entry.name,
+					key = entry.key,
 				})
 			end
 		end
@@ -71,17 +71,13 @@ local function _model_processor(lines)
 	return models
 end
 
---- @param win integer
-function M.get_children(win)
-	local file_path = utils.get_win_path(win)
-	if not file_path then
-		return {}
-	end
-
+--- @param parent_model_id string
+--- @return table
+function M.get_children(parent_model_id)
 	local lines = M.run_filter(
 		M.filters.children,
 		-- Add -r and -c for compact JSON output, and the --arg for the file path
-		{ "-r", "-c", "--arg", "filepath", file_path }
+		{ "-r", "-c", "--arg", "parent_model_id", parent_model_id }
 	)
 	if lines and #lines > 0 then
 		local models = _model_processor(lines)
@@ -92,16 +88,31 @@ end
 
 --- @param win integer
 --- @return table
-function M.get_parents(win)
+function M.get_models(win)
 	local file_path = utils.get_win_path(win)
 	if not file_path then
 		return {}
 	end
 
 	local lines = M.run_filter(
-		M.filters.parents,
+		M.filters.path_to_model,
 		-- Add -r and -c for compact JSON output, and the --arg for the file path
 		{ "-r", "-c", "--arg", "filepath", file_path }
+	)
+	if lines and #lines > 0 then
+		local models = _model_processor(lines)
+		return models
+	end
+	return {}
+end
+
+--- @param child_model_id string
+--- @return table
+function M.get_parents(child_model_id)
+	local lines = M.run_filter(
+		M.filters.parents,
+		-- Add -r and -c for compact JSON output, and the --arg for the file path
+		{ "-r", "-c", "--arg", "child_model_id", child_model_id }
 	)
 	if lines and #lines > 0 then
 		local models = _model_processor(lines)

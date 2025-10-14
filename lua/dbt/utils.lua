@@ -27,6 +27,25 @@ function M.get_manifest_path()
 	return default_path
 end
 
+function M.get_dbt_project_name()
+	-- The default path if no custom target-path is found in dbt_project.yml
+	local default_path = "target/manifest.json"
+
+	-- Command to find the 'target-path' value in dbt_project.yml and strip surrounding quotes
+	local cmd = "awk '/name:/ {print $2}' dbt_project.yml | tr -d '\"'"
+
+	-- Note: Using vim.fn.systemlist() directly here for the complex piped command
+	-- is simpler than trying to pass it through M_run_sync.
+	local lines = vim.fn.systemlist(cmd)
+
+	-- Check for success (exit code 0) and ensure the command returned at least one line
+	if vim.v.shell_error == 0 and lines and #lines > 0 then
+		return lines[1]
+	end
+
+	error("yooooo where the dbt_project at nigga")
+end
+
 --- @param cmd string The command name (e.g., "jq").
 --- @param args table List of arguments (e.g., {'.filter', 'file.json'}).
 --- @return table|nil lines List of strings representing stdout output, or nil on error.

@@ -1,25 +1,27 @@
----@class Model
+---@class Node
 ---@field name string
----@field path string
+---@field path? string
 ---@field key string
+---@field type "model" | "source" | "seed"
 
 ---@class Content
 ---@field type "model" | "header" | "noaction"
----@field value? "children" | "parents" | Model
+---@field value? "children" | "parents" | Node
 ---@field text? string
 
 ---@class dbt.PersistentWindow
 ---@field public name string
+---@field public project string
 ---@field _bufnr integer
 ---@field _refwin integer
 ---@field _win? integer
 ---@field _autocmd_group string
----@field _children table<Model>
----@field _parents table<Model>
+---@field _children table<Node>
+---@field _parents table<Node>
 ---@field _children_collapsed boolean
 ---@field _parents_collapsed boolean
 ---@field _index_map table<Content>
----@field _entities table<Model>
+---@field _node Node?
 local PersistentWindow = {}
 
 local ui = {}
@@ -33,8 +35,10 @@ ui.persistent_window_instances = {}
 function PersistentWindow:new(opts)
 	self.__index = self
 	local bufnr = self:buffer(opts)
+	local project = require("dbt.utils").get_dbt_project_name()
 	return setmetatable({
 		name = opts.name,
+		project = project,
 		_refwin = opts.refwin,
 		_bufnr = bufnr,
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
@@ -57,7 +61,7 @@ function PersistentWindow:open()
 	ui.persistent_window_instances[self._win] = self
 	self:setup_autocmds()
 	vim.api.nvim_set_current_win(self._refwin)
-	self:update()
+	self:update_node()
 end
 
 --- Creates and configures persistent read only buffer
@@ -79,7 +83,7 @@ function PersistentWindow:buffer(opts)
 	return bufnr
 end
 
---- @param models table<Model>
+--- @param models table<Node>
 --- @param type "children" | "parents"
 function PersistentWindow:set_models(models, type)
 	if type == "parents" then
@@ -92,11 +96,37 @@ function PersistentWindow:set_models(models, type)
 	end
 end
 
-function PersistentWindow:update()
+function PersistentWindow:update_node()
+	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
+	local ft = vim.bo[bufnr].filetype
+
+	local node
+	if ft == "sql" or ft == "csv" then
+		local jq = require("dbt.jq")
+		node = jq.get_models(self._refwin)[1]
+	elseif ft == "yaml" then
+		local parser = require("dbt.parser")
+		local nearest = parser.current_prior_node()
+		if nearest then
+			node = {
+				name = nearest.name,
+				key = nearest.type .. "." .. self.project .. "." .. nearest.name,
+			}
+		end
+	end
+	self._node = node
+	self:update_sections()
+end
+
+function PersistentWindow:update_sections()
 	local jq = require("dbt.jq")
-	self._entities = jq.get_models(self._refwin)
-	self._parents = jq.get_parents(self._entities[1].key)
-	self._children = jq.get_children(self._entities[1].key)
+	if self._node ~= nil then
+		self._parents = jq.get_parents(self._node.key)
+		self._children = jq.get_children(self._node.key)
+	else
+		self._parents = {}
+		self._children = {}
+	end
 	self:render_content()
 end
 
@@ -114,7 +144,7 @@ function PersistentWindow:toggle_section(section)
 	self:render_content()
 end
 
---- @param model Model
+--- @param model Node
 function PersistentWindow:go_to_model(model)
 	local modelbufnr = vim.fn.bufnr(model.path, true)
 	if modelbufnr > 0 then
@@ -159,6 +189,16 @@ function PersistentWindow:render_content()
 	local text = {}
 	local index_map = {}
 
+	if self._node then
+		if string.match(self._node.key, "model.") then
+			local title = string.format("Model: %s", self._node.name)
+			table.insert(text, title)
+			table.insert(index_map, { type = "noaction" })
+			table.insert(text, "")
+			table.insert(index_map, { type = "noaction" })
+		end
+	end
+
 	--- @param list table
 	--- @param section "parents" | "children"
 	--- @param data table
@@ -173,16 +213,6 @@ function PersistentWindow:render_content()
 				table.insert(list, "  " .. connector .. " " .. model.name)
 				table.insert(index_map, { type = "model", value = model })
 			end
-		end
-	end
-
-	if self._entities and #self._entities > 0 then
-		if string.match(self._entities[1].key, "model.") then
-			local title = string.format("Model: %s", self._entities[1].name)
-			table.insert(text, title)
-			table.insert(index_map, { type = "noaction" })
-			table.insert(text, "")
-			table.insert(index_map, { type = "noaction" })
 		end
 	end
 
@@ -214,7 +244,18 @@ function PersistentWindow:setup_autocmds()
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self:update()
+				self:update_node()
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("CursorMoved", {
+		group = self._autocmd_group,
+		pattern = "*",
+		callback = function()
+			local win = vim.api.nvim_get_current_win()
+			if win == self._refwin then
+				self:update_node()
 			end
 		end,
 	})

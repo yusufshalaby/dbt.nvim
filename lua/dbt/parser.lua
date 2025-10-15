@@ -87,8 +87,8 @@ local queries = {
 
 --- @param candidates table sorted table of source candidates
 --- @param row integer
---- @return table?
-local function nearest_prior_node(candidates, row)
+--- @return integer
+function M.binary_search(candidates, row)
 	local lo, hi, ans = 1, #candidates, 0
 	while lo <= hi do
 		local mid = math.floor((lo + hi) / 2)
@@ -99,24 +99,35 @@ local function nearest_prior_node(candidates, row)
 			hi = mid - 1
 		end
 	end
-	if ans == 0 then
-		return nil
-	end
-	local hit = candidates[ans]
-	if hit.sourcename and hit.tablename then
-		return {
-			type = "source",
-			name = hit.sourcename .. "." .. hit.tablename,
-		}
-	elseif hit.modelname then
-		return {
-			type = "model",
-			name = hit.modelname,
-		}
-	end
+	return ans
+	-- if ans == 0 then
+	-- 	return nil
+	-- end
+	-- local hit = candidates[ans]
+	-- if hit.sourcename and hit.tablename then
+	-- 	return {
+	-- 		type = "source",
+	-- 		name = hit.sourcename .. "." .. hit.tablename,
+	-- 	}
+	-- elseif hit.modelname then
+	-- 	return {
+	-- 		type = "model",
+	-- 		name = hit.modelname,
+	-- 	}
+	-- end
 end
 
-local function parse_node()
+---@class SourceCandidate
+---@field sourcename string
+---@field tablenamme string
+---@field row integer
+
+---@class ModelCandidate
+---@field modelname string
+---@field row integer
+
+---@return table<SourceCandidate|ModelCandidate>
+function M.parse_yaml()
 	local query = vim.treesitter.query.parse("yaml", queries.sources)
 	local tree = vim.treesitter.get_parser():parse()[1]
 	local matches = {}
@@ -143,11 +154,11 @@ local function parse_node()
 	return candidates
 end
 
--- Convenience wrapper that grabs the current cursor row
-function M.current_prior_node()
-	local candidates = parse_node()
-	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
-	return nearest_prior_node(candidates, cur_row)
-end
+-- ---@return Node?
+-- function M.current_prior_node()
+-- 	local candidates = M.parse_yaml()
+-- 	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
+-- 	return M.binary_search(candidates, cur_row)
+-- end
 
 return M

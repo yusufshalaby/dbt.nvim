@@ -64,6 +64,7 @@ local function _model_processor(lines)
 					path = entry.path,
 					name = entry.name,
 					key = entry.key,
+					type = "model",
 				})
 			end
 		end

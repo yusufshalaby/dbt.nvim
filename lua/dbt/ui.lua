@@ -1,7 +1,8 @@
+local parser = require("dbt.parser")
 ---@class Node
 ---@field name string
 ---@field path? string
----@field key string
+---@field key? string
 ---@field type "model" | "source" | "seed"
 
 ---@class Content
@@ -22,6 +23,9 @@
 ---@field _parents_collapsed boolean
 ---@field _index_map table<Content>
 ---@field _node Node?
+---@field _yaml_candidates table<SourceCandidate|ModelCandidate>
+---@field _yaml_node_lb integer?
+---@field _yaml_node_ub integer?
 local PersistentWindow = {}
 
 local ui = {}
@@ -47,6 +51,9 @@ function PersistentWindow:new(opts)
 		_children_collapsed = false,
 		_parents_collapsed = false,
 		_index_map = { "noaction" },
+		_yaml_candidates = {},
+		_yaml_node_lb = nil,
+		_yaml_node_ub = nil,
 	}, self)
 end
 
@@ -96,25 +103,71 @@ function PersistentWindow:set_models(models, type)
 	end
 end
 
+function PersistentWindow:update_yaml_node()
+	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
+	if
+		(self._yaml_node_lb and cur_row < self._yaml_node_lb) or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
+	then
+		self:update_yaml_candidates()
+		self:update_sections()
+	end
+end
+
+function PersistentWindow:update_yaml_candidates()
+	self._yaml_candidates = parser.parse_yaml()
+	if #self._yaml_candidates == 0 then
+		self._node = nil
+		self._yaml_node_lb = nil
+		self._yaml_node_ub = nil
+		return
+	end
+
+	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
+	local nearest = parser.binary_search(self._yaml_candidates, cur_row)
+	if nearest == 0 then
+		self._node = nil
+		self._yaml_node_lb = nil
+		self._yaml_node_ub = self._yaml_candidates[1].row - 1
+		return
+	end
+
+	-- vim.print(self._yaml_candidates)
+	-- vim.print(nearest)
+	local hit = self._yaml_candidates[nearest]
+	if hit.sourcename and hit.tablename then
+		self._node = {
+			type = "source",
+			key = "source." .. self.project .. "." .. hit.sourcename .. "." .. hit.tablename,
+			name = hit.sourcename .. "." .. hit.tablename,
+		}
+	elseif hit.modelname then
+		self._node = {
+			type = "model",
+			key = "model." .. self.project .. "." .. hit.modelname,
+			name = hit.modelname,
+		}
+	else
+		-- TODO: deal with this case properly
+		self._node = nil
+	end
+
+	self._yaml_node_lb = self._yaml_candidates[nearest].row
+	if nearest < #self._yaml_candidates then
+		self._yaml_node_ub = self._yaml_candidates[nearest + 1].row - 1
+	else
+		self._yaml_node_ub = nil
+	end
+end
+
 function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
 	local ft = vim.bo[bufnr].filetype
-
-	local node
 	if ft == "sql" or ft == "csv" then
 		local jq = require("dbt.jq")
-		node = jq.get_models(self._refwin)[1]
+		self._node = jq.get_models(self._refwin)[1]
 	elseif ft == "yaml" then
-		local parser = require("dbt.parser")
-		local nearest = parser.current_prior_node()
-		if nearest then
-			node = {
-				name = nearest.name,
-				key = nearest.type .. "." .. self.project .. "." .. nearest.name,
-			}
-		end
+		self:update_yaml_candidates()
 	end
-	self._node = node
 	self:update_sections()
 end
 
@@ -190,13 +243,12 @@ function PersistentWindow:render_content()
 	local index_map = {}
 
 	if self._node then
-		if string.match(self._node.key, "model.") then
-			local title = string.format("Model: %s", self._node.name)
-			table.insert(text, title)
-			table.insert(index_map, { type = "noaction" })
-			table.insert(text, "")
-			table.insert(index_map, { type = "noaction" })
-		end
+		local type = self._node.type:gsub("^%l", string.upper)
+		local title = string.format("%s: %s", type, self._node.name)
+		table.insert(text, title)
+		table.insert(index_map, { type = "noaction" })
+		table.insert(text, "")
+		table.insert(index_map, { type = "noaction" })
 	end
 
 	--- @param list table
@@ -249,13 +301,13 @@ function PersistentWindow:setup_autocmds()
 		end,
 	})
 
-	vim.api.nvim_create_autocmd("CursorMoved", {
+	vim.api.nvim_create_autocmd("CursorHold", {
 		group = self._autocmd_group,
-		pattern = "*",
+		pattern = { "*.yml", "*.yaml" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self:update_node()
+				self:update_yaml_node()
 			end
 		end,
 	})

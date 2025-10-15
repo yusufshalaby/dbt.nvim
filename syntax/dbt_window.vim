@@ -5,7 +5,7 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn match dbtWindowTitle '^Model:\s.*$'
+syn match dbtWindowTitle '^\(Model\|Source\):\s.*$'
 
 syn match dbtWindowHeader '^\(Parents\|Children\)\s*(\d\+)\s*$'
 

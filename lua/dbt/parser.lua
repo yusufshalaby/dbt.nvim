@@ -1,7 +1,6 @@
 local M = {}
 
-local queries = {
-	sources = [[
+local QUERY = [[
 (block_mapping_pair
   key: (flow_node) @parentkey
   (#any-of? @parentkey "sources" "'sources'" "\"sources\""
@@ -61,31 +60,9 @@ local queries = {
 	     )
 	   )
   )
-  ]],
-	models = [[
-(block_mapping_pair
-  key: (flow_node) @parentkey
-  (#any-of? @parentkey "models" "'models'" "\"models\"")
-  value: (block_node
-	   (block_sequence
-	     (block_sequence_item
-	       (block_node
-		 (block_mapping
-		   (block_mapping_pair
-		     key: (flow_node) @modelkeyname
-		     (#any-of? @modelkeyname "name" "'name'" "\"name\"")
-		     value: (flow_node) @modelname
-		     )
-		   )
-		 )
-	       )
-	     )
-	   )
-  )
-  ]],
-}
+  ]]
 
---- @param candidates table sorted table of source candidates
+--- @param candidates table sorted table of candidates
 --- @param row integer
 --- @return integer
 function M.binary_search(candidates, row)
@@ -100,21 +77,6 @@ function M.binary_search(candidates, row)
 		end
 	end
 	return ans
-	-- if ans == 0 then
-	-- 	return nil
-	-- end
-	-- local hit = candidates[ans]
-	-- if hit.sourcename and hit.tablename then
-	-- 	return {
-	-- 		type = "source",
-	-- 		name = hit.sourcename .. "." .. hit.tablename,
-	-- 	}
-	-- elseif hit.modelname then
-	-- 	return {
-	-- 		type = "model",
-	-- 		name = hit.modelname,
-	-- 	}
-	-- end
 end
 
 ---@class SourceCandidate
@@ -128,7 +90,7 @@ end
 
 ---@return table<SourceCandidate|ModelCandidate>
 function M.parse_yaml()
-	local query = vim.treesitter.query.parse("yaml", queries.sources)
+	local query = vim.treesitter.query.parse("yaml", QUERY)
 	local tree = vim.treesitter.get_parser():parse()[1]
 	local matches = {}
 	for id, node, metadata, match in query:iter_captures(tree:root(), 0) do
@@ -153,12 +115,5 @@ function M.parse_yaml()
 	end)
 	return candidates
 end
-
--- ---@return Node?
--- function M.current_prior_node()
--- 	local candidates = M.parse_yaml()
--- 	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
--- 	return M.binary_search(candidates, cur_row)
--- end
 
 return M

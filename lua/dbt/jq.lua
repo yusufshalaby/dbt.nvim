@@ -5,30 +5,32 @@ M.filters = {
 	path_to_model = [['
 		(.nodes | to_entries[] | select(.value.original_file_path == $filepath) |
 		select(.key | startswith("model.") or startswith("seed.")) |
-		{ "key": .key, "name": .value.name, "path": .value.original_file_path})
+		{ "key": .key, "name": .value.name, "path": .value.original_file_path, "type": .value.resource_type})
 	']],
 	models = '\'.nodes | with_entries(select(.key | startswith("model."))) | .[] | {"name":.name, "path": .original_file_path}\'',
 	seeds = '.nodes | with_entries(select(.key | startswith("seed."))) | .[].name',
 	children = [['
 	    . as $manifest |
-	    (.child_map[$parent_model_id] | 
+	    (.child_map[$parent_model_id] // [] | 
 	    map(select(startswith("model.")))) as $child_ids |
 	      $child_ids[] | 
 	      {
 		      "key": .,
 		      "name": $manifest.nodes[.].name,
-		      "path": $manifest.nodes[.].original_file_path
+		      "path": $manifest.nodes[.].original_file_path,
+		      "type": $manifest.nodes[.].resource_type,
 	      }
 	']],
 	parents = [['
 	    . as $manifest |
-	    (.parent_map[$child_model_id] | 
-	    map(select(startswith("model.") or startswith("seed.")))) as $parent_ids |
-	      $parent_ids[] | 
+	    (.parent_map[$child_model_id] // [] | 
+	    map(select(startswith("model.") or startswith("seed.") or startswith("source.")))) as $parent_ids |
+	      $parent_ids[]? | 
 	      {
 		      "key": .,
-		      "name": $manifest.nodes[.].name,
-		      "path": $manifest.nodes[.].original_file_path
+		      "name": ($manifest.nodes[.].name // $manifest.sources[.].source_name + "." + $manifest.sources[.].name),
+		      "path": ($manifest.nodes[.].original_file_path // $manifest.sources[.].original_file_path),
+		      "type": ($manifest.nodes[.].resource_type // $manifest.sources[.].resource_type),
 	      }
 	']],
 }
@@ -64,7 +66,7 @@ local function _model_processor(lines)
 					path = entry.path,
 					name = entry.name,
 					key = entry.key,
-					type = "model",
+					type = entry.type,
 				})
 			end
 		end

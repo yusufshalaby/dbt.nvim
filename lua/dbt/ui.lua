@@ -108,13 +108,16 @@ function PersistentWindow:update_yaml_node()
 	if
 		(self._yaml_node_lb and cur_row < self._yaml_node_lb) or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
 	then
-		self:update_yaml_candidates()
+		self:update_yaml_candidates(false)
 		self:update_sections()
 	end
 end
 
-function PersistentWindow:update_yaml_candidates()
-	self._yaml_candidates = parser.parse_yaml()
+---@param parse boolean
+function PersistentWindow:update_yaml_candidates(parse)
+	if parse then
+		self._yaml_candidates = parser.parse_yaml()
+	end
 	if #self._yaml_candidates == 0 then
 		self._node = nil
 		self._yaml_node_lb = nil
@@ -166,7 +169,7 @@ function PersistentWindow:update_node()
 		local jq = require("dbt.jq")
 		self._node = jq.get_models(self._refwin)[1]
 	elseif ft == "yaml" then
-		self:update_yaml_candidates()
+		self:update_yaml_candidates(true)
 	end
 	self:update_sections()
 end
@@ -297,6 +300,18 @@ function PersistentWindow:setup_autocmds()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
 				self:update_node()
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("BufWrite", {
+		group = self._autocmd_group,
+		pattern = { "*.yml", "*.yaml" },
+		callback = function()
+			local win = vim.api.nvim_get_current_win()
+			if win == self._refwin then
+				self:update_yaml_candidates(true)
+				self:update_sections()
 			end
 		end,
 	})

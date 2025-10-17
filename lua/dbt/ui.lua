@@ -1,4 +1,7 @@
 local parser = require("dbt.parser")
+local jq = require("dbt.jq")
+local utils = require("dbt.utils")
+
 ---@class Node
 ---@field name string
 ---@field path? string
@@ -6,7 +9,7 @@ local parser = require("dbt.parser")
 ---@field type "model" | "source" | "seed"
 
 ---@class Content
----@field type "model" | "header" | "noaction"
+---@field type "model" | "source" | "seed" | "header" | "noaction"
 ---@field value? "children" | "parents" | Node
 ---@field text? string
 
@@ -39,7 +42,7 @@ ui.persistent_window_instances = {}
 function PersistentWindow:new(opts)
 	self.__index = self
 	local bufnr = self:buffer(opts)
-	local project = require("dbt.utils").get_dbt_project_name()
+	local project = utils.get_dbt_project_name()
 	return setmetatable({
 		name = opts.name,
 		project = project,
@@ -114,7 +117,8 @@ function PersistentWindow:update_yaml_node()
 end
 
 ---@param parse boolean
-function PersistentWindow:update_yaml_candidates(parse)
+---@param node Node?
+function PersistentWindow:update_yaml_candidates(parse, node)
 	if parse then
 		self._yaml_candidates = parser.parse_yaml()
 	end
@@ -125,33 +129,54 @@ function PersistentWindow:update_yaml_candidates(parse)
 		return
 	end
 
-	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
-	local nearest = parser.binary_search(self._yaml_candidates, cur_row)
-	if nearest == 0 then
-		self._node = nil
-		self._yaml_node_lb = nil
-		self._yaml_node_ub = self._yaml_candidates[1].row - 1
-		return
-	end
+	local nearest = 0
+	-- if the node was passed then set PersistentWindow node to that
+	if node then
+		for i, v in ipairs(self._yaml_candidates) do
+			local key = ""
+			if node.type == "source" then
+				key = "source." .. self.project .. "." .. v.sourcename .. "." .. v.tablename
+			elseif node.type == "model" then
+				key = "model." .. self.project .. "." .. v.modellane
+			end
 
-	-- vim.print(self._yaml_candidates)
-	-- vim.print(nearest)
-	local hit = self._yaml_candidates[nearest]
-	if hit.sourcename and hit.tablename then
-		self._node = {
-			type = "source",
-			key = "source." .. self.project .. "." .. hit.sourcename .. "." .. hit.tablename,
-			name = hit.sourcename .. "." .. hit.tablename,
-		}
-	elseif hit.modelname then
-		self._node = {
-			type = "model",
-			key = "model." .. self.project .. "." .. hit.modelname,
-			name = hit.modelname,
-		}
+			if node.key == key then
+				self._node = node
+				nearest = i
+				break
+			end
+		end
+
+	-- otherwise infer based on the location of the cursor
 	else
-		-- TODO: deal with this case properly
-		self._node = nil
+		local cur_row = vim.api.nvim_win_get_cursor(0)[1]
+		nearest = parser.binary_search(self._yaml_candidates, cur_row)
+		if nearest == 0 then
+			self._node = nil
+			self._yaml_node_lb = nil
+			self._yaml_node_ub = self._yaml_candidates[1].row - 1
+			return
+		end
+
+		-- vim.print(self._yaml_candidates)
+		-- vim.print(nearest)
+		local hit = self._yaml_candidates[nearest]
+		if hit.sourcename and hit.tablename then
+			self._node = {
+				type = "source",
+				key = "source." .. self.project .. "." .. hit.sourcename .. "." .. hit.tablename,
+				name = hit.sourcename .. "." .. hit.tablename,
+			}
+		elseif hit.modelname then
+			self._node = {
+				type = "model",
+				key = "model." .. self.project .. "." .. hit.modelname,
+				name = hit.modelname,
+			}
+		else
+			-- TODO: deal with this case properly
+			self._node = nil
+		end
 	end
 
 	self._yaml_node_lb = self._yaml_candidates[nearest].row
@@ -166,7 +191,6 @@ function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
 	local ft = vim.bo[bufnr].filetype
 	if ft == "sql" or ft == "csv" then
-		local jq = require("dbt.jq")
 		self._node = jq.get_models(self._refwin)[1]
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
@@ -175,7 +199,6 @@ function PersistentWindow:update_node()
 end
 
 function PersistentWindow:update_sections()
-	local jq = require("dbt.jq")
 	if self._node ~= nil then
 		self._parents = jq.get_parents(self._node.key)
 		self._children = jq.get_children(self._node.key)
@@ -200,9 +223,9 @@ function PersistentWindow:toggle_section(section)
 	self:render_content()
 end
 
---- @param model Node
-function PersistentWindow:go_to_model(model)
-	local modelbufnr = vim.fn.bufnr(model.path, true)
+--- @param node Node
+function PersistentWindow:go_to_path(node)
+	local modelbufnr = vim.fn.bufnr(node.path, true)
 	if modelbufnr > 0 then
 		vim.api.nvim_win_set_buf(self._refwin, modelbufnr)
 		-- TODO error handling
@@ -220,8 +243,13 @@ function PersistentWindow:user_action()
 
 	if content.type == "header" then
 		self:toggle_section(content.value)
-	elseif content.type == "model" then
-		self:go_to_model(content.value)
+	elseif content.type == "model" or content.type == "seed" then
+		self:go_to_path(content.value)
+	elseif content.type == "source" then
+		self:go_to_path(content.value)
+		self:update_yaml_candidates(false, content.value)
+		self:update_sections()
+		vim.print("hi")
 	end
 end
 
@@ -258,23 +286,23 @@ function PersistentWindow:render_content()
 	--- @param section "parents" | "children"
 	--- @param data table
 	--- @param collapsed boolean
-	local function format_models(list, section, data, collapsed)
+	local function format_nodes(list, section, data, collapsed)
 		table.insert(list, string.format("%s (%d)", section:gsub("^%l", string.upper), #data))
 		table.insert(index_map, { type = "header", value = section })
 		if data and #data > 0 and not collapsed then
 			local count = #data
-			for i, model in ipairs(data) do
+			for i, node in ipairs(data) do
 				local connector = (i == count) and "└╴" or "├╴"
-				table.insert(list, "  " .. connector .. " " .. model.name)
-				table.insert(index_map, { type = "model", value = model })
+				table.insert(list, "  " .. connector .. " " .. node.name)
+				table.insert(index_map, { type = node.type, value = node })
 			end
 		end
 	end
 
-	format_models(text, "parents", self._parents, self._parents_collapsed)
+	format_nodes(text, "parents", self._parents, self._parents_collapsed)
 	table.insert(text, "")
 	table.insert(index_map, { type = "noaction" })
-	format_models(text, "children", self._children, self._children_collapsed)
+	format_nodes(text, "children", self._children, self._children_collapsed)
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = self._bufnr })
 	vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, true, text)
@@ -295,11 +323,23 @@ function PersistentWindow:setup_autocmds()
 	vim.api.nvim_create_augroup(self._autocmd_group, { clear = true })
 	vim.api.nvim_create_autocmd("BufWinEnter", {
 		group = self._autocmd_group,
-		pattern = "*",
+		pattern = { "*.sql", "*.csv" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self:update_node()
+				self._node = jq.get_models(self._refwin)[1]
+				self:update_sections()
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		group = self._autocmd_group,
+		pattern = { "*.yml", "*.yaml" },
+		callback = function()
+			local win = vim.api.nvim_get_current_win()
+			if win == self._refwin then
+				self:update_yaml_candidates(true)
 			end
 		end,
 	})

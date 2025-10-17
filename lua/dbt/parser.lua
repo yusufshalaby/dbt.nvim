@@ -81,7 +81,7 @@ end
 
 ---@class SourceCandidate
 ---@field sourcename string
----@field tablenamme string
+---@field tablename string
 ---@field row integer
 
 ---@class ModelCandidate

@@ -93,29 +93,6 @@ function PersistentWindow:buffer(opts)
 	return bufnr
 end
 
---- @param models table<Node>
---- @param type "children" | "parents"
-function PersistentWindow:set_models(models, type)
-	if type == "parents" then
-		self._parents = models
-	elseif type == "children" then
-		self._children = models
-	else
-		local error_msg = string.format("Invalid model type: %s", type)
-		vim.notify(error_msg, vim.log.levels.ERROR, { title = "dbt.nvim Error" })
-	end
-end
-
-function PersistentWindow:update_yaml_node()
-	local cur_row = vim.api.nvim_win_get_cursor(0)[1]
-	if
-		(self._yaml_node_lb and cur_row < self._yaml_node_lb) or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
-	then
-		self:update_yaml_candidates(false)
-		self:update_sections()
-	end
-end
-
 ---@param parse boolean
 ---@param node Node?
 function PersistentWindow:update_yaml_candidates(parse, node)
@@ -247,18 +224,16 @@ function PersistentWindow:user_action()
 		self:go_to_path(content.value)
 	elseif content.type == "source" then
 		self:go_to_path(content.value)
+		-- the bufenter autocommand does the treesitter parsing 
 		self:update_yaml_candidates(false, content.value)
 		self:update_sections()
-		vim.print("hi")
 	end
 end
 
---- Sets up the <CR> key binding for toggling sections.
 function PersistentWindow:setup_interactions()
 	-- Clear existing maps (good practice)
 	vim.api.nvim_buf_clear_namespace(self._bufnr, 0, 0, -1)
 
-	-- FIX: Use the new static handler function for cleaner keymap definition.
 	-- We pass self._win (the window ID) to the static handler function.
 	vim.api.nvim_buf_set_keymap(
 		self._bufnr,
@@ -362,7 +337,14 @@ function PersistentWindow:setup_autocmds()
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self:update_yaml_node()
+				local cur_row = vim.api.nvim_win_get_cursor(0)[1]
+				if
+					(self._yaml_node_lb and cur_row < self._yaml_node_lb)
+					or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
+				then
+					self:update_yaml_candidates(false)
+					self:update_sections()
+				end
 			end
 		end,
 	})

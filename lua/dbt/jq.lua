@@ -54,44 +54,42 @@ function M.run_filter(filter, args)
 	end
 end
 
---- @param parent_model_id string
---- @param manifest table
---- @return table
-function M.get_children(parent_model_id, manifest)
-	local child_ids = manifest["child_map"][parent_model_id]
-	local children = {}
-	for _, child_id in ipairs(child_ids) do
-		if string.find(child_id, "^model.") then
-			local child_node = manifest["nodes"][child_id]
-			table.insert(children, {
-				key = child_id,
-				name = child_node["name"],
-				path = child_node["original_file_path"],
-				type = child_node["resource_type"],
-			})
-		end
-	end
+local function _node_processor(node_manifest)
+	return {
+		key = node_manifest["unique_id"],
+		name = node_manifest["name"],
+		path = node_manifest["original_file_path"],
+		type = node_manifest["resource_type"],
+		patch_path = type(node_manifest["patch_path"]) == "string"
+				and node_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
+			or nil,
+	}
+end
 
-	return children
+function _source_processor(source_manifest)
+	return {
+		key = source_manifest["unique_id"],
+		name = source_manifest["source_name"] .. "." .. source_manifest["name"],
+		path = source_manifest["original_file_path"],
+		type = source_manifest["resource_type"],
+		patch_path = type(source_manifest["patch_path"]) == "string"
+				and source_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
+			or nil,
+	}
 end
 
 --- @param win integer
 --- @param manifest table
 --- @return table
-function M.get_model(win, manifest)
+function M.get_node(win, manifest)
 	local file_path = utils.get_win_path(win)
 	if not file_path then
 		return {}
 	end
 
-	for key, val in pairs(manifest["nodes"]) do
+	for _, val in pairs(manifest["nodes"]) do
 		if val["original_file_path"] == file_path then
-			return {
-				key = key,
-				path = val["original_file_path"],
-				name = val["name"],
-				type = val["resource_type"],
-			}
+			return _node_processor(val)
 		end
 	end
 
@@ -106,25 +104,34 @@ function M.get_parents(child_model_id, manifest)
 	local parents = {}
 	for _, parent_id in ipairs(parent_ids) do
 		if string.find(parent_id, "^model.") or string.find(parent_id, "^seed.") then
-			local parent_node = manifest["nodes"][parent_id]
-			table.insert(parents, {
-				key = parent_id,
-				name = parent_node["name"],
-				path = parent_node["original_file_path"],
-				type = parent_node["resource_type"],
-			})
+			local node_manifest = manifest["nodes"][parent_id]
+			local node = _node_processor(node_manifest)
+			table.insert(parents, node)
 		end
 		if string.find(parent_id, "^source.") then
-			local parent_node = manifest["sources"][parent_id]
-			table.insert(parents, {
-				key = parent_id,
-				name = parent_node["source_name"] .. "." .. parent_node["name"],
-				path = parent_node["original_file_path"],
-				type = parent_node["resource_type"],
-			})
+			local source_manifest = manifest["sources"][parent_id]
+			local source = _source_processor(source_manifest)
+			table.insert(parents, source)
 		end
 	end
 	return parents
+end
+
+--- @param parent_model_id string
+--- @param manifest table
+--- @return table
+function M.get_children(parent_model_id, manifest)
+	local child_ids = manifest["child_map"][parent_model_id]
+	local children = {}
+	for _, child_id in ipairs(child_ids) do
+		if string.find(child_id, "^model.") then
+			local node_manifest = manifest["nodes"][child_id]
+			local node = _node_processor(node_manifest)
+			table.insert(children, node)
+		end
+	end
+
+	return children
 end
 
 return M

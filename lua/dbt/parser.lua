@@ -43,16 +43,17 @@ local QUERY = [[
 
 (block_mapping_pair
   key: (flow_node) @parentkey
-  (#any-of? @parentkey "models" "'models'" "\"models\"")
+  (#any-of? @parentkey "models" "'models'" "\"models\""
+				"seeds" "'seeds'" "\"seeds\"")
   value: (block_node
 	   (block_sequence
 	     (block_sequence_item
 	       (block_node
 		 (block_mapping
 		   (block_mapping_pair
-		     key: (flow_node) @modelkeyname
-		     (#any-of? @modelkeyname "name" "'name'" "\"name\"")
-		     value: (flow_node) @modelname
+		     key: (flow_node) @nodekey
+		     (#any-of? @nodekey "name" "'name'" "\"name\"")
+		     value: (flow_node) @nodename
 		     )
 		   )
 		 )
@@ -80,15 +81,17 @@ function M.binary_search(candidates, row)
 end
 
 ---@class SourceCandidate
+---@field parentkey "sources"
 ---@field sourcename string
 ---@field tablename string
 ---@field row integer
 
----@class ModelCandidate
----@field modelname string
+---@class NodeCandidate
+---@field parentkey "models" | "seeds"
+---@field nodename string
 ---@field row integer
 
----@return table<SourceCandidate|ModelCandidate>
+---@return table<SourceCandidate|NodeCandidate>
 function M.parse_yaml()
 	local query = vim.treesitter.query.parse("yaml", QUERY)
 	local tree = vim.treesitter.get_parser():parse()[1]
@@ -97,12 +100,9 @@ function M.parse_yaml()
 		if matches[match:info()] == nil then
 			matches[match:info()] = {}
 		end
-		if query.captures[id] == "sourcename" then
-			matches[match:info()]["sourcename"] = vim.treesitter.get_node_text(node, vim.api.nvim_get_current_buf())
-		elseif query.captures[id] == "tablename" or query.captures[id] == "modelname" then
-			matches[match:info()][query.captures[id]] =
-				vim.treesitter.get_node_text(node, vim.api.nvim_get_current_buf())
-			-- add 1 to row because vim.treesitter.get_range uses 0-based row index
+
+		matches[match:info()][query.captures[id]] = vim.treesitter.get_node_text(node, vim.api.nvim_get_current_buf())
+		if query.captures[id] == "tablename" or query.captures[id] == "nodename" then
 			matches[match:info()]["row"] = vim.treesitter.get_range(node, vim.api.nvim_get_current_buf())[1] + 1
 		end
 	end

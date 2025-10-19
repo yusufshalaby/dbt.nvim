@@ -7,6 +7,7 @@ local utils = require("dbt.utils")
 ---@field path? string
 ---@field key? string
 ---@field type "model" | "source" | "seed"
+---@field patch_path? string
 
 ---@class Content
 ---@field type "model" | "source" | "seed" | "header" | "noaction"
@@ -27,7 +28,7 @@ local utils = require("dbt.utils")
 ---@field _parents_collapsed boolean
 ---@field _index_map table<Content>
 ---@field _node Node?
----@field _yaml_candidates table<SourceCandidate|ModelCandidate>
+---@field _yaml_candidates table<SourceCandidate|NodeCandidate>
 ---@field _yaml_node_lb integer?
 ---@field _yaml_node_ub integer?
 local PersistentWindow = {}
@@ -138,8 +139,6 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 			return
 		end
 
-		-- vim.print(self._yaml_candidates)
-		-- vim.print(nearest)
 		local hit = self._yaml_candidates[nearest]
 		if hit.sourcename and hit.tablename then
 			self._node = {
@@ -147,11 +146,12 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 				key = "source." .. self.project .. "." .. hit.sourcename .. "." .. hit.tablename,
 				name = hit.sourcename .. "." .. hit.tablename,
 			}
-		elseif hit.modelname then
+		elseif hit.nodename then
+			local nodetype = hit.parentkey == "models" and "model" or "seed"
 			self._node = {
-				type = "model",
-				key = "model." .. self.project .. "." .. hit.modelname,
-				name = hit.modelname,
+				type = nodetype,
+				key = nodetype .. "." .. self.project .. "." .. hit.nodename,
+				name = hit.nodename,
 			}
 		else
 			-- TODO: deal with this case properly
@@ -171,7 +171,7 @@ function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
 	local ft = vim.bo[bufnr].filetype
 	if ft == "sql" or ft == "csv" then
-		self._node = jq.get_model(self._refwin, self._manifest)
+		self._node = jq.get_node(self._refwin, self._manifest)
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
 	end
@@ -212,6 +212,17 @@ function PersistentWindow:go_to_path(node)
 	end
 end
 
+--- @param node Node
+function PersistentWindow:go_to_patch_path(node)
+	if node.patch_path then
+		local modelbufnr = vim.fn.bufnr(node.patch_path, true)
+		if modelbufnr > 0 then
+			vim.api.nvim_win_set_buf(self._refwin, modelbufnr)
+			-- TODO error handling
+		end
+	end
+end
+
 function PersistentWindow:user_action()
 	local win_cursor = vim.api.nvim_win_get_cursor(self._win)
 	local current_line = win_cursor[1]
@@ -221,7 +232,9 @@ function PersistentWindow:user_action()
 		return
 	end
 
-	if content.type == "header" then
+	if content.type == "title" then
+		self:go_to_patch_path(content.value)
+	elseif content.type == "header" then
 		self:toggle_section(content.value)
 	elseif content.type == "model" or content.type == "seed" then
 		self:go_to_path(content.value)
@@ -255,7 +268,7 @@ function PersistentWindow:render_content()
 		local type = self._node.type:gsub("^%l", string.upper)
 		local title = string.format("%s: %s", type, self._node.name)
 		table.insert(text, title)
-		table.insert(index_map, { type = "noaction" })
+		table.insert(index_map, { type = "title", value = self._node })
 		table.insert(text, "")
 		table.insert(index_map, { type = "noaction" })
 	end
@@ -305,7 +318,7 @@ function PersistentWindow:setup_autocmds()
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self._node = jq.get_model(self._refwin, self._manifest)
+				self._node = jq.get_node(self._refwin, self._manifest)
 				self:update_sections()
 			end
 		end,

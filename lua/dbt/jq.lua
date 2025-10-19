@@ -54,74 +54,77 @@ function M.run_filter(filter, args)
 	end
 end
 
---- @param lines table<string>
+--- @param parent_model_id string
+--- @param manifest table
 --- @return table
-local function _model_processor(lines)
-	local models = {}
-	for _, line in ipairs(lines) do
-		if #line > 0 then
-			local success, entry = pcall(vim.json.decode, line)
-			if success and entry and entry.name and entry.path then
-				table.insert(models, {
-					path = entry.path,
-					name = entry.name,
-					key = entry.key,
-					type = entry.type,
-				})
-			end
+function M.get_children(parent_model_id, manifest)
+	local child_ids = manifest["child_map"][parent_model_id]
+	local children = {}
+	for _, child_id in ipairs(child_ids) do
+		if string.find(child_id, "^model.") then
+			local child_node = manifest["nodes"][child_id]
+			table.insert(children, {
+				key = child_id,
+				name = child_node["name"],
+				path = child_node["original_file_path"],
+				type = child_node["resource_type"],
+			})
 		end
 	end
-	return models
-end
 
---- @param parent_model_id string
---- @return table
-function M.get_children(parent_model_id)
-	local lines = M.run_filter(
-		M.filters.children,
-		-- Add -r and -c for compact JSON output, and the --arg for the file path
-		{ "-r", "-c", "--arg", "parent_model_id", parent_model_id }
-	)
-	if lines and #lines > 0 then
-		local models = _model_processor(lines)
-		return models
-	end
-	return {}
+	return children
 end
 
 --- @param win integer
+--- @param manifest table
 --- @return table
-function M.get_models(win)
+function M.get_model(win, manifest)
 	local file_path = utils.get_win_path(win)
 	if not file_path then
 		return {}
 	end
 
-	local lines = M.run_filter(
-		M.filters.path_to_model,
-		-- Add -r and -c for compact JSON output, and the --arg for the file path
-		{ "-r", "-c", "--arg", "filepath", file_path }
-	)
-	if lines and #lines > 0 then
-		local models = _model_processor(lines)
-		return models
+	for key, val in pairs(manifest["nodes"]) do
+		if val["original_file_path"] == file_path then
+			return {
+				key = key,
+				path = val["original_file_path"],
+				name = val["name"],
+				type = val["resource_type"],
+			}
+		end
 	end
+
 	return {}
 end
 
 --- @param child_model_id string
+--- @param manifest table
 --- @return table
-function M.get_parents(child_model_id)
-	local lines = M.run_filter(
-		M.filters.parents,
-		-- Add -r and -c for compact JSON output, and the --arg for the file path
-		{ "-r", "-c", "--arg", "child_model_id", child_model_id }
-	)
-	if lines and #lines > 0 then
-		local models = _model_processor(lines)
-		return models
+function M.get_parents(child_model_id, manifest)
+	local parent_ids = manifest["parent_map"][child_model_id]
+	local parents = {}
+	for _, parent_id in ipairs(parent_ids) do
+		if string.find(parent_id, "^model.") or string.find(parent_id, "^seed.") then
+			local parent_node = manifest["nodes"][parent_id]
+			table.insert(parents, {
+				key = parent_id,
+				name = parent_node["name"],
+				path = parent_node["original_file_path"],
+				type = parent_node["resource_type"],
+			})
+		end
+		if string.find(parent_id, "^source.") then
+			local parent_node = manifest["sources"][parent_id]
+			table.insert(parents, {
+				key = parent_id,
+				name = parent_node["source_name"] .. "." .. parent_node["name"],
+				path = parent_node["original_file_path"],
+				type = parent_node["resource_type"],
+			})
+		end
 	end
-	return {}
+	return parents
 end
 
 return M

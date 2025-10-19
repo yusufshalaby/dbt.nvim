@@ -19,6 +19,7 @@ local utils = require("dbt.utils")
 ---@field _bufnr integer
 ---@field _refwin integer
 ---@field _win? integer
+---@field _manifest table
 ---@field _autocmd_group string
 ---@field _children table<Node>
 ---@field _parents table<Node>
@@ -37,6 +38,7 @@ ui.persistent_window_instances = {}
 ---@class dbt.PersistentWindowOpts
 ---@field name string
 ---@field refwin integer
+---@field manifest table
 
 ---@param opts dbt.PersistentWindowOpts
 function PersistentWindow:new(opts)
@@ -47,6 +49,7 @@ function PersistentWindow:new(opts)
 		name = opts.name,
 		project = project,
 		_refwin = opts.refwin,
+		_manifest = opts.manifest,
 		_bufnr = bufnr,
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
 		_children = {},
@@ -168,7 +171,7 @@ function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
 	local ft = vim.bo[bufnr].filetype
 	if ft == "sql" or ft == "csv" then
-		self._node = jq.get_models(self._refwin)[1]
+		self._node = jq.get_model(self._refwin, self._manifest)
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
 	end
@@ -177,8 +180,8 @@ end
 
 function PersistentWindow:update_sections()
 	if self._node ~= nil then
-		self._parents = jq.get_parents(self._node.key)
-		self._children = jq.get_children(self._node.key)
+		self._parents = jq.get_parents(self._node.key, self._manifest)
+		self._children = jq.get_children(self._node.key, self._manifest)
 	else
 		self._parents = {}
 		self._children = {}
@@ -224,7 +227,7 @@ function PersistentWindow:user_action()
 		self:go_to_path(content.value)
 	elseif content.type == "source" then
 		self:go_to_path(content.value)
-		-- the bufenter autocommand does the treesitter parsing 
+		-- the bufenter autocommand does the treesitter parsing
 		self:update_yaml_candidates(false, content.value)
 		self:update_sections()
 	end
@@ -302,7 +305,7 @@ function PersistentWindow:setup_autocmds()
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self._refwin then
-				self._node = jq.get_models(self._refwin)[1]
+				self._node = jq.get_model(self._refwin, self._manifest)
 				self:update_sections()
 			end
 		end,
@@ -378,7 +381,7 @@ end
 
 --- @param opts dbt.PersistentWindowOpts
 function ui.new(opts)
-	return PersistentWindow:new({ name = opts.name, refwin = opts.refwin })
+	return PersistentWindow:new({ name = opts.name, refwin = opts.refwin, manifest = opts.manifest })
 end
 
 return ui

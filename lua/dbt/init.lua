@@ -1,30 +1,18 @@
 local M = {}
+local factory = require("dbt.ui")
+local utils = require("dbt.utils")
 
----@param filepath string
-local function _read_json_file(filepath)
-	-- Read the entire file as a string
-	local file = io.open(filepath, "r")
-	if not file then
-		error("Could not open file: " .. filepath)
-	end
-
-	local content = file:read("*a") -- read all contents
-	file:close()
-
-	-- Decode the JSON string into a Lua table
-	local ok, data = pcall(vim.json.decode, content)
-	if not ok then
-		error("Invalid JSON in " .. filepath)
-	end
-
-	return data
-end
-
-function M.split()
-	local factory = require("dbt.ui")
+function M.ui()
 	local curwin = vim.api.nvim_get_current_win()
-	local manifest = _read_json_file("target/manifest.json")
-	local ui = factory.new({ name = "dbt-deps", refwin = curwin, manifest = manifest })
+	for _, ui in pairs(factory.persistent_window_instances) do
+		if ui.refwin == curwin then
+			ui:dispose()
+			return
+		end
+	end
+	local manifest = utils.read_json_file("target/manifest.json")
+	local name = "dbtui-" .. tostring(curwin)
+	local ui = factory.new({ name = name, refwin = curwin, manifest = manifest })
 	ui:open()
 end
 

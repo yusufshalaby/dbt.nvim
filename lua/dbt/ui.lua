@@ -1,5 +1,5 @@
 local parser = require("dbt.parser")
-local jq = require("dbt.jq")
+local jq = require("dbt.manifest")
 local utils = require("dbt.utils")
 
 ---@class Node
@@ -17,8 +17,8 @@ local utils = require("dbt.utils")
 ---@class dbt.PersistentWindow
 ---@field public name string
 ---@field public project string
----@field _bufnr integer
----@field _refwin integer
+---@field bufnr integer
+---@field refwin integer
 ---@field _win? integer
 ---@field _manifest table
 ---@field _autocmd_group string
@@ -49,9 +49,9 @@ function PersistentWindow:new(opts)
 	return setmetatable({
 		name = opts.name,
 		project = project,
-		_refwin = opts.refwin,
+		refwin = opts.refwin,
+		bufnr = bufnr,
 		_manifest = opts.manifest,
-		_bufnr = bufnr,
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
 		_children = {},
 		_parents = {},
@@ -67,14 +67,14 @@ end
 function PersistentWindow:open()
 	local total_cols = vim.opt.columns:get()
 	local target_width = math.floor(total_cols / 3)
-	self._win = vim.api.nvim_open_win(self._bufnr, true, { split = "right", style = "minimal", width = target_width })
+	self._win = vim.api.nvim_open_win(self.bufnr, true, { split = "right", style = "minimal", width = target_width })
 	vim.api.nvim_set_option_value("number", false, { win = self._win })
 	vim.api.nvim_set_option_value("relativenumber", false, { win = self._win })
 	vim.api.nvim_set_option_value("spell", false, { win = self._win })
 	vim.api.nvim_set_option_value("winfixwidth", true, { win = self._win })
 	ui.persistent_window_instances[self._win] = self
 	self:setup_autocmds()
-	vim.api.nvim_set_current_win(self._refwin)
+	vim.api.nvim_set_current_win(self.refwin)
 	self:update_node()
 end
 
@@ -82,8 +82,8 @@ end
 --- @param opts dbt.PersistentWindowOpts
 --- @return integer bufnr
 function PersistentWindow:buffer(opts)
-	if self._bufnr and vim.api.nvim_buf_is_valid(self._bufnr) and vim.api.nvim_buf_is_loaded(self._bufnr) then
-		return self._bufnr
+	if self.bufnr and vim.api.nvim_buf_is_valid(self.bufnr) and vim.api.nvim_buf_is_loaded(self.bufnr) then
+		return self.bufnr
 	end
 	local bufnr = vim.api.nvim_create_buf(true, false)
 
@@ -168,10 +168,10 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 end
 
 function PersistentWindow:update_node()
-	local bufnr = vim.api.nvim_win_get_buf(self._refwin)
+	local bufnr = vim.api.nvim_win_get_buf(self.refwin)
 	local ft = vim.bo[bufnr].filetype
 	if ft == "sql" or ft == "csv" then
-		self._node = jq.get_node(self._refwin, self._manifest)
+		self._node = jq.get_node(self.refwin, self._manifest)
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
 	end
@@ -207,7 +207,7 @@ end
 function PersistentWindow:go_to_path(node)
 	local modelbufnr = vim.fn.bufnr(node.path, true)
 	if modelbufnr > 0 then
-		vim.api.nvim_win_set_buf(self._refwin, modelbufnr)
+		vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
 		-- TODO error handling
 	end
 end
@@ -217,7 +217,7 @@ function PersistentWindow:go_to_patch_path(node)
 	if node.patch_path then
 		local modelbufnr = vim.fn.bufnr(node.patch_path, true)
 		if modelbufnr > 0 then
-			vim.api.nvim_win_set_buf(self._refwin, modelbufnr)
+			vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
 			-- TODO error handling
 		end
 	end
@@ -248,11 +248,11 @@ end
 
 function PersistentWindow:setup_interactions()
 	-- Clear existing maps (good practice)
-	vim.api.nvim_buf_clear_namespace(self._bufnr, 0, 0, -1)
+	vim.api.nvim_buf_clear_namespace(self.bufnr, 0, 0, -1)
 
 	-- We pass self._win (the window ID) to the static handler function.
 	vim.api.nvim_buf_set_keymap(
-		self._bufnr,
+		self.bufnr,
 		"n",
 		"<CR>",
 		string.format('<Cmd>lua require("dbt.ui").handle_key_press(%d)<CR>', self._win),
@@ -295,9 +295,9 @@ function PersistentWindow:render_content()
 	table.insert(index_map, { type = "noaction" })
 	format_nodes(text, "children", self._children, self._children_collapsed)
 
-	vim.api.nvim_set_option_value("modifiable", true, { buf = self._bufnr })
-	vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, true, text)
-	vim.api.nvim_set_option_value("modifiable", false, { buf = self._bufnr })
+	vim.api.nvim_set_option_value("modifiable", true, { buf = self.bufnr })
+	vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, true, text)
+	vim.api.nvim_set_option_value("modifiable", false, { buf = self.bufnr })
 
 	self._index_map = index_map
 
@@ -307,7 +307,7 @@ end
 function PersistentWindow:dispose()
 	pcall(vim.api.nvim_del_augroup_by_name, self._autocmd_group)
 	ui.persistent_window_instances[self._win] = nil
-	vim.api.nvim_buf_delete(self._bufnr, { force = true })
+	vim.api.nvim_buf_delete(self.bufnr, { force = true })
 end
 
 function PersistentWindow:setup_autocmds()
@@ -317,8 +317,8 @@ function PersistentWindow:setup_autocmds()
 		pattern = { "*.sql", "*.csv" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
-			if win == self._refwin then
-				self._node = jq.get_node(self._refwin, self._manifest)
+			if win == self.refwin then
+				self._node = jq.get_node(self.refwin, self._manifest)
 				self:update_sections()
 			end
 		end,
@@ -329,7 +329,7 @@ function PersistentWindow:setup_autocmds()
 		pattern = { "*.yml", "*.yaml" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
-			if win == self._refwin then
+			if win == self.refwin then
 				self:update_yaml_candidates(true)
 			end
 		end,
@@ -340,7 +340,7 @@ function PersistentWindow:setup_autocmds()
 		pattern = { "*.yml", "*.yaml" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
-			if win == self._refwin then
+			if win == self.refwin then
 				self:update_yaml_candidates(true)
 				self:update_sections()
 			end
@@ -352,7 +352,7 @@ function PersistentWindow:setup_autocmds()
 		pattern = { "*.yml", "*.yaml" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
-			if win == self._refwin then
+			if win == self.refwin then
 				local cur_row = vim.api.nvim_win_get_cursor(0)[1]
 				if
 					(self._yaml_node_lb and cur_row < self._yaml_node_lb)

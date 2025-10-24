@@ -94,16 +94,24 @@ end
 ---@return table<SourceCandidate|NodeCandidate>
 function M.parse_yaml()
 	local query = vim.treesitter.query.parse("yaml", QUERY)
-	local tree = vim.treesitter.get_parser():parse()[1]
+	local parser = vim.treesitter.get_parser()
+	if not parser then return {} end
+	parser:parse()
+	local trees = parser:parse()
+	if not trees then return {} end
 	local matches = {}
-	for id, node, metadata, match in query:iter_captures(tree:root(), 0) do
-		if matches[match:info()] == nil then
-			matches[match:info()] = {}
-		end
+	for _, tree in ipairs(trees) do
+		for _, match in query:iter_matches(tree:root(), 0) do
+			local res = {}
+			for id, nodes in pairs(match) do
+				local node = nodes[1]
+				res[query.captures[id]] = vim.treesitter.get_node_text(node, vim.api.nvim_get_current_buf())
+				if query.captures[id] == "tablename" or query.captures[id] == "nodename" then
+					res["row"] = vim.treesitter.get_range(node, vim.api.nvim_get_current_buf())[1] + 1
+				end
+			end
 
-		matches[match:info()][query.captures[id]] = vim.treesitter.get_node_text(node, vim.api.nvim_get_current_buf())
-		if query.captures[id] == "tablename" or query.captures[id] == "nodename" then
-			matches[match:info()]["row"] = vim.treesitter.get_range(node, vim.api.nvim_get_current_buf())[1] + 1
+			table.insert(matches, res)
 		end
 	end
 	local candidates = {}

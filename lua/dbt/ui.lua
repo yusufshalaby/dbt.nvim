@@ -122,13 +122,13 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 			end
 
 			if node.key == key then
-				self._node = node
 				nearest = i
 				break
 			end
 		end
+		self._node = node
 
-	-- otherwise infer based on the location of the cursor
+		-- otherwise infer based on the location of the cursor
 	else
 		local cur_row = vim.api.nvim_win_get_cursor(0)[1]
 		nearest = parser.binary_search(self._yaml_candidates, cur_row)
@@ -159,11 +159,19 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 		end
 	end
 
-	self._yaml_node_lb = self._yaml_candidates[nearest].row
-	if nearest < #self._yaml_candidates then
-		self._yaml_node_ub = self._yaml_candidates[nearest + 1].row - 1
+	if nearest > 0 then
+		self._yaml_node_lb = self._yaml_candidates[nearest].row
+		if nearest < #self._yaml_candidates then
+			self._yaml_node_ub = self._yaml_candidates[nearest + 1].row - 1
+		else
+			self._yaml_node_ub = nil
+		end
 	else
-		self._yaml_node_ub = nil
+		-- if the node is in the yaml file but can't be detected by treesitter
+		-- we set the bounds to 1 to ensure the parsing continues to update
+		-- when the cursor moves
+		self._yaml_node_lb = 1
+		self._yaml_node_ub = 1
 	end
 end
 
@@ -355,8 +363,8 @@ function PersistentWindow:setup_autocmds()
 			if win == self.refwin then
 				local cur_row = vim.api.nvim_win_get_cursor(0)[1]
 				if
-					(self._yaml_node_lb and cur_row < self._yaml_node_lb)
-					or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
+				    (self._yaml_node_lb and cur_row < self._yaml_node_lb)
+				    or (self._yaml_node_ub and cur_row > self._yaml_node_ub)
 				then
 					self:update_yaml_candidates(false)
 					self:update_sections()

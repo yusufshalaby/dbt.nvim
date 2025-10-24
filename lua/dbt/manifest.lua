@@ -8,8 +8,8 @@ local function _node_processor(node_manifest)
 		path = node_manifest["original_file_path"],
 		type = node_manifest["resource_type"],
 		patch_path = type(node_manifest["patch_path"]) == "string"
-				and node_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
-			or nil,
+		    and node_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
+		    or nil,
 	}
 end
 
@@ -20,8 +20,8 @@ local function _source_processor(source_manifest)
 		path = source_manifest["original_file_path"],
 		type = source_manifest["resource_type"],
 		patch_path = type(source_manifest["patch_path"]) == "string"
-				and source_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
-			or nil,
+		    and source_manifest["patch_path"]:gsub("^[^:]+://", "", 1)
+		    or nil,
 	}
 end
 
@@ -35,6 +35,12 @@ function M.get_node(win, manifest)
 	end
 
 	for _, val in pairs(manifest["nodes"]) do
+		if val["original_file_path"] == file_path then
+			return _node_processor(val)
+		end
+	end
+
+	for _, val in pairs(manifest["macros"]) do
 		if val["original_file_path"] == file_path then
 			return _node_processor(val)
 		end

@@ -57,7 +57,9 @@ function M.get_parents(child_model_id, manifest)
 	local parents = {}
 	if not parent_ids then return parents end
 	for _, parent_id in ipairs(parent_ids) do
-		if string.find(parent_id, "^model.") or string.find(parent_id, "^seed.") then
+		if string.find(parent_id, "^model.") or
+		    string.find(parent_id, "^seed.") or
+		    string.find(parent_id, "^snapshot.") then
 			local node_manifest = manifest["nodes"][parent_id]
 			local node = _node_processor(node_manifest)
 			table.insert(parents, node)
@@ -79,7 +81,7 @@ function M.get_children(parent_model_id, manifest)
 	local children = {}
 	if not child_ids then return children end
 	for _, child_id in ipairs(child_ids) do
-		if string.find(child_id, "^model.") then
+		if string.find(child_id, "^model.") or string.find(child_id, "^snapshot.") then
 			local node_manifest = manifest["nodes"][child_id]
 			local node = _node_processor(node_manifest)
 			table.insert(children, node)

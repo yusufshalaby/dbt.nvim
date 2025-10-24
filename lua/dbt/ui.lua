@@ -6,7 +6,7 @@ local utils = require("dbt.utils")
 ---@field name string
 ---@field path? string
 ---@field key? string
----@field type "model" | "source" | "seed"
+---@field type "model" | "source" | "seed" | "snapshot"
 ---@field patch_path? string
 
 ---@class Content
@@ -147,7 +147,15 @@ function PersistentWindow:update_yaml_candidates(parse, node)
 				name = hit.sourcename .. "." .. hit.tablename,
 			}
 		elseif hit.nodename then
-			local nodetype = hit.parentkey == "models" and "model" or "seed"
+			-- local nodetype = hit.parentkey == "models" and "model" or "seed"
+			local nodetype
+			if hit.parentkey == "models" then
+				nodetype = "model"
+			elseif hit.parentkey == "seeds" then
+				nodetype = "seed"
+			elseif hit.parentkey == "snapshots" then
+				nodetype = "snapshot"
+			end
 			self._node = {
 				type = nodetype,
 				key = nodetype .. "." .. self.project .. "." .. hit.nodename,
@@ -216,8 +224,13 @@ function PersistentWindow:go_to_path(node)
 	local modelbufnr = vim.fn.bufnr(node.path, true)
 	if modelbufnr > 0 then
 		vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
-		-- TODO error handling
+		if vim.bo[modelbufnr].filetype == "yaml" then
+			-- the bufenter autocommand does the treesitter parsing
+			self:update_yaml_candidates(false, node)
+			self:update_sections()
+		end
 	end
+	-- TODO error handling
 end
 
 --- @param node Node
@@ -244,13 +257,8 @@ function PersistentWindow:user_action()
 		self:go_to_patch_path(content.value)
 	elseif content.type == "header" then
 		self:toggle_section(content.value)
-	elseif content.type == "model" or content.type == "seed" then
+	elseif content.type == "model" or content.type == "seed" or content.type == "snapshot" or content.type == "source" then
 		self:go_to_path(content.value)
-	elseif content.type == "source" then
-		self:go_to_path(content.value)
-		-- the bufenter autocommand does the treesitter parsing
-		self:update_yaml_candidates(false, content.value)
-		self:update_sections()
 	end
 end
 

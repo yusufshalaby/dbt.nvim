@@ -44,7 +44,9 @@ local QUERY = [[
 (block_mapping_pair
   key: (flow_node) @parentkey
   (#any-of? @parentkey "models" "'models'" "\"models\""
-				"seeds" "'seeds'" "\"seeds\"")
+				"seeds" "'seeds'" "\"seeds\""
+				"snapshots" "'snapshots'" "\"snapshots\""
+			      )
   value: (block_node
 	   (block_sequence
 	     (block_sequence_item
@@ -87,7 +89,7 @@ end
 ---@field row integer
 
 ---@class NodeCandidate
----@field parentkey "models" | "seeds"
+---@field parentkey "models" | "seeds" | "snapshots"
 ---@field nodename string
 ---@field row integer
 

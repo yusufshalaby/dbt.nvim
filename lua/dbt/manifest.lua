@@ -55,6 +55,7 @@ end
 function M.get_parents(child_model_id, manifest)
 	local parent_ids = manifest["parent_map"][child_model_id]
 	local parents = {}
+	if not parent_ids then return parents end
 	for _, parent_id in ipairs(parent_ids) do
 		if string.find(parent_id, "^model.") or string.find(parent_id, "^seed.") then
 			local node_manifest = manifest["nodes"][parent_id]
@@ -76,6 +77,7 @@ end
 function M.get_children(parent_model_id, manifest)
 	local child_ids = manifest["child_map"][parent_model_id]
 	local children = {}
+	if not child_ids then return children end
 	for _, child_id in ipairs(child_ids) do
 		if string.find(child_id, "^model.") then
 			local node_manifest = manifest["nodes"][child_id]

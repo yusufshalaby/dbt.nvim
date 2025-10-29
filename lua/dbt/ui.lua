@@ -67,6 +67,7 @@ function PersistentWindow:new(opts)
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
 		_children = {},
 		_parents = {},
+		_columns = {},
 		_children_collapsed = false,
 		_parents_collapsed = false,
 		_index_map = { "noaction" },
@@ -318,7 +319,8 @@ function PersistentWindow:render_content()
 			local count = #data
 			for i, node in ipairs(data) do
 				local connector = (i == count) and "└╴" or "├╴"
-				table.insert(list, "  " .. connector .. " " .. node.name)
+				table.insert(list,
+					"  " .. connector .. " " .. node.name .. " " .. string.upper(node.type))
 				table.insert(index_map, { type = node.type, value = node })
 			end
 		end
@@ -332,7 +334,7 @@ function PersistentWindow:render_content()
 			local count = #self._columns
 			for i, col in pairs(self._columns) do
 				local connector = (i == count) and "└╴" or "├╴"
-				table.insert(text, "  " .. connector .. " " .. col.name)
+				table.insert(text, "  " .. connector .. " " .. col.name .. " " .. col.type)
 				table.insert(index_map, { type = "column", value = col })
 			end
 		end

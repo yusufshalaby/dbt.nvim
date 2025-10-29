@@ -9,10 +9,12 @@ syn match dbtWindowTitle '^\(Model\|Seed\|Source\|Snapshot\):\s.*$'
 
 syn match dbtWindowHeader '^\(Parents\|Children\|Columns\)\s*(\d\+)\s*$'
 
-syn match dbtWindowModel '^\s*[└├]╴\s*.\+$'
+syn match dbtWindowItemName '^\s*[└├]╴\s*\zs[^[:space:]]\+'
+syn match dbtWindowItemType '\s\+\zs\w\+\ze\s*$'
 
 hi link dbtWindowTitle Title
 hi link dbtWindowHeader Title
-hi link dbtWindowModel Identifier
+hi link dbtWindowItemName Identifier
+hi link dbtWindowItemType Comment
 
 let b:current_syntax = "dbt_window"

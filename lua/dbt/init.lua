@@ -11,8 +11,12 @@ function M.ui()
 		end
 	end
 	local manifest = utils.read_json_file("target/manifest.json")
+	if not manifest then
+		error("Could not load manifest")
+	end
+	local catalog = utils.read_json_file("target/catalog.json")
 	local name = "dbtui-" .. tostring(curwin)
-	local ui = factory.new({ name = name, refwin = curwin, manifest = manifest })
+	local ui = factory.new({ name = name, refwin = curwin, manifest = manifest, catalog = catalog })
 	ui:open()
 end
 

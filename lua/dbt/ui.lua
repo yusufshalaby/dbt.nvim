@@ -9,6 +9,12 @@ local utils = require("dbt.utils")
 ---@field type "model" | "source" | "seed" | "snapshot"
 ---@field patch_path? string
 
+---@class Column
+---@field type string
+---@field name string
+---@field index integer
+---@field comment string
+
 ---@class Content
 ---@field type "model" | "source" | "seed" | "header" | "noaction"
 ---@field value? "children" | "parents" | Node
@@ -19,13 +25,16 @@ local utils = require("dbt.utils")
 ---@field public project string
 ---@field bufnr integer
 ---@field refwin integer
----@field _win? integer
+---@field _win integer?
 ---@field _manifest table
+---@field _catalog table?
 ---@field _autocmd_group string
 ---@field _children table<Node>
 ---@field _parents table<Node>
+---@field _columns table<Column>
 ---@field _children_collapsed boolean
 ---@field _parents_collapsed boolean
+---@field _columns_collapsed boolean
 ---@field _index_map table<Content>
 ---@field _node Node?
 ---@field _yaml_candidates table<SourceCandidate|NodeCandidate>
@@ -40,6 +49,7 @@ ui.persistent_window_instances = {}
 ---@field name string
 ---@field refwin integer
 ---@field manifest table
+---@field catalog table
 
 ---@param opts dbt.PersistentWindowOpts
 function PersistentWindow:new(opts)
@@ -51,7 +61,9 @@ function PersistentWindow:new(opts)
 		project = project,
 		refwin = opts.refwin,
 		bufnr = bufnr,
+		_win = nil,
 		_manifest = opts.manifest,
+		_catalog = opts.catalog,
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
 		_children = {},
 		_parents = {},
@@ -198,9 +210,13 @@ function PersistentWindow:update_sections()
 	if self._node ~= nil then
 		self._parents = jq.get_parents(self._node.key, self._manifest)
 		self._children = jq.get_children(self._node.key, self._manifest)
+		if self._catalog ~= nil then
+			self._columns = jq.get_columns(self._node, self._catalog)
+		end
 	else
 		self._parents = {}
 		self._children = {}
+		self._columns = {}
 	end
 	self:render_content()
 end
@@ -211,6 +227,8 @@ function PersistentWindow:toggle_section(section)
 		self._parents_collapsed = not self._parents_collapsed
 	elseif section == "children" then
 		self._children_collapsed = not self._children_collapsed
+	elseif section == "columns" then
+		self._columns_collapsed = not self._columns_collapsed
 	else
 		local error_msg = string.format("Invalid section: %s", section)
 		vim.notify(error_msg, vim.log.levels.ERROR, { title = "dbt.nvim Error" })
@@ -306,10 +324,27 @@ function PersistentWindow:render_content()
 		end
 	end
 
+
+	function format_columns()
+		table.insert(text, string.format("Columns (%d)", #self._columns))
+		table.insert(index_map, { type = "header", value = "columns" })
+		if self._columns and #self._columns > 0 and not self._columns_collapsed then
+			local count = #self._columns
+			for i, col in pairs(self._columns) do
+				local connector = (i == count) and "└╴" or "├╴"
+				table.insert(text, "  " .. connector .. " " .. col.name)
+				table.insert(index_map, { type = "column", value = col })
+			end
+		end
+	end
+
 	format_nodes(text, "parents", self._parents, self._parents_collapsed)
 	table.insert(text, "")
 	table.insert(index_map, { type = "noaction" })
 	format_nodes(text, "children", self._children, self._children_collapsed)
+	table.insert(text, "")
+	table.insert(index_map, { type = "noaction" })
+	format_columns()
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = self.bufnr })
 	vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, true, text)
@@ -410,7 +445,13 @@ end
 
 --- @param opts dbt.PersistentWindowOpts
 function ui.new(opts)
-	return PersistentWindow:new({ name = opts.name, refwin = opts.refwin, manifest = opts.manifest })
+	return PersistentWindow:new({
+		name = opts.name,
+		refwin = opts.refwin,
+		manifest = opts.manifest,
+		catalog = opts
+		    .catalog
+	})
 end
 
 return ui

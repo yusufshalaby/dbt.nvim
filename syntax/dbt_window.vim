@@ -7,7 +7,7 @@ endif
 
 syn match dbtWindowTitle '^\(Model\|Seed\|Source\|Snapshot\):\s.*$'
 
-syn match dbtWindowHeader '^\(Parents\|Children\)\s*(\d\+)\s*$'
+syn match dbtWindowHeader '^\(Parents\|Children\|Columns\)\s*(\d\+)\s*$'
 
 syn match dbtWindowModel '^\s*[└├]╴\s*.\+$'
 

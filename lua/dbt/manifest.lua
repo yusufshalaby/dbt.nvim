@@ -51,7 +51,7 @@ end
 
 --- @param child_model_id string
 --- @param manifest table
---- @return table
+--- @return table<Node>
 function M.get_parents(child_model_id, manifest)
 	local parent_ids = manifest["parent_map"][child_model_id]
 	local parents = {}
@@ -75,7 +75,7 @@ end
 
 --- @param parent_model_id string
 --- @param manifest table
---- @return table
+--- @return table<Node>
 function M.get_children(parent_model_id, manifest)
 	local child_ids = manifest["child_map"][parent_model_id]
 	local children = {}
@@ -89,6 +89,24 @@ function M.get_children(parent_model_id, manifest)
 	end
 
 	return children
+end
+
+---@param node Node
+---@param catalog table
+---@return table<Column>
+function M.get_columns(node, catalog)
+	local key = node.type == "source" and "sources" or "nodes"
+	local cols_dict = catalog[key][node.key]["columns"]
+	-- Convert dictionary to array
+	local cols = {}
+	for _, col in pairs(cols_dict) do
+		table.insert(cols, col)
+	end
+	-- Sort the array by index
+	table.sort(cols, function(a, b)
+		return a.index < b.index
+	end)
+	return cols
 end
 
 return M

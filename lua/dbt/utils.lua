@@ -21,11 +21,13 @@ function M.get_dbt_project_name()
 end
 
 ---@param filepath string
+---@return table?
 function M.read_json_file(filepath)
 	-- Read the entire file as a string
 	local file = io.open(filepath, "r")
 	if not file then
-		error("Could not open file: " .. filepath)
+		-- error("Could not open file: " .. filepath)
+		return
 	end
 
 	local content = file:read("*a") -- read all contents
@@ -34,7 +36,8 @@ function M.read_json_file(filepath)
 	-- Decode the JSON string into a Lua table
 	local ok, data = pcall(vim.json.decode, content)
 	if not ok then
-		error("Invalid JSON in " .. filepath)
+		-- error("Invalid JSON in " .. filepath)
+		return
 	end
 
 	return data

@@ -96,7 +96,11 @@ end
 ---@return table<Column>
 function M.get_columns(node, catalog)
 	local key = node.type == "source" and "sources" or "nodes"
-	local cols_dict = catalog[key][node.key]["columns"]
+	local node_catalog = catalog[key][node.key]
+	if node_catalog == nil then
+		return {}
+	end
+	local cols_dict = node_catalog["columns"]
 	-- Convert dictionary to array
 	local cols = {}
 	for _, col in pairs(cols_dict) do

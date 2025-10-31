@@ -20,7 +20,7 @@ function M.ui()
 	ui:open()
 end
 
-function M.setup(opts)
+local function setup_keymaps()
 	vim.keymap.set("n", "gd", function()
 		local filename = vim.fn.expand("<cfile>")
 
@@ -36,6 +36,17 @@ function M.setup(opts)
 			vim.cmd("normal! gd")
 		end
 	end)
+end
+
+local function setup_commands()
+	vim.api.nvim_create_user_command("DBTUI", function()
+		M.ui()
+	end, {})
+end
+
+function M.setup(opts)
+	setup_keymaps()
+	setup_commands()
 end
 
 -- Return the module

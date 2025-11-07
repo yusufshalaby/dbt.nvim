@@ -299,7 +299,7 @@ function PersistentWindow:render_content()
 	local text = {}
 	local index_map = {}
 
-	if self._node then
+	if self._node and self._node.type and self._node.name then
 		local type = self._node.type:gsub("^%l", string.upper)
 		local title = string.format("%s: %s", type, self._node.name)
 		table.insert(text, title)

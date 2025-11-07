@@ -199,7 +199,7 @@ end
 function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self.refwin)
 	local ft = vim.bo[bufnr].filetype
-	if ft == "sql" or ft == "csv" then
+	if ft == "sql" or ft == "csv" or ft == "python" then
 		self._node = jq.get_node(self.refwin, self._manifest)
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
@@ -327,7 +327,7 @@ function PersistentWindow:render_content()
 	end
 
 
-	function format_columns()
+	local function format_columns()
 		table.insert(text, string.format("Columns (%d)", #self._columns))
 		table.insert(index_map, { type = "header", value = "columns" })
 		if self._columns and #self._columns > 0 and not self._columns_collapsed then
@@ -367,7 +367,7 @@ function PersistentWindow:setup_autocmds()
 	vim.api.nvim_create_augroup(self._autocmd_group, { clear = true })
 	vim.api.nvim_create_autocmd("BufWinEnter", {
 		group = self._autocmd_group,
-		pattern = { "*.sql", "*.csv" },
+		pattern = { "*.sql", "*.csv", "*.py" },
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self.refwin then

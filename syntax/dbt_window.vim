@@ -7,7 +7,8 @@ endif
 
 syn match dbtWindowTitle '^\(Model\|Seed\|Source\|Snapshot\):\s.*$'
 
-syn match dbtWindowHeader '^\(Parents\|Children\|Columns\)\s*(\d\+)\s*$'
+syn match dbtWindowHeader '^\(Upstream\|Downstream\)\s*·\s*\(Direct\|All\)\s*(\d\+)\s*$'
+syn match dbtWindowHeader '^\(Columns\)\s*(\d\+)\s*$'
 
 syn match dbtWindowItemName '^\s*[└├]╴\s*\zs[^[:space:]]\+'
 syn match dbtWindowItemType '\s\+\zs\w\+\ze\s*$'

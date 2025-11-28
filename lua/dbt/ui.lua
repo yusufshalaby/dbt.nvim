@@ -17,7 +17,7 @@ local utils = require("dbt.utils")
 
 ---@class Content
 ---@field type "model" | "source" | "seed" | "header" | "noaction"
----@field value? "children" | "parents" | Node
+---@field value? "downstream" | "upstream" | Node
 ---@field text? string
 
 ---@class dbt.PersistentWindow
@@ -29,11 +29,12 @@ local utils = require("dbt.utils")
 ---@field _manifest table
 ---@field _catalog table?
 ---@field _autocmd_group string
----@field _children table<Node>
----@field _parents table<Node>
+---@field _lineage_mode "direct" | "all"
+---@field _downstream table<Node>
+---@field _upstream table<Node>
 ---@field _columns table<Column>
----@field _children_collapsed boolean
----@field _parents_collapsed boolean
+---@field _downstream_collapsed boolean
+---@field _upstream_collapsed boolean
 ---@field _columns_collapsed boolean
 ---@field _index_map table<Content>
 ---@field _node Node?
@@ -65,11 +66,12 @@ function PersistentWindow:new(opts)
 		_manifest = opts.manifest,
 		_catalog = opts.catalog,
 		_autocmd_group = "dbt_nvim_win_" .. tostring(opts.refwin),
-		_children = {},
-		_parents = {},
+		_lineage_mode = "direct",
+		_downstream = {},
+		_upstream = {},
 		_columns = {},
-		_children_collapsed = false,
-		_parents_collapsed = false,
+		_downstream_collapsed = false,
+		_upstream_collapsed = false,
 		_index_map = { "noaction" },
 		_yaml_candidates = {},
 		_yaml_node_lb = nil,
@@ -209,25 +211,48 @@ end
 
 function PersistentWindow:update_sections()
 	if self._node ~= nil then
-		self._parents = artifact.get_parents(self._node.key, self._manifest)
-		self._children = artifact.get_children(self._node.key, self._manifest)
+		local upstream, downstream
+		if self._lineage_mode == "direct" then
+			upstream = artifact.get_parents(self._node.key, self._manifest)
+			downstream = artifact.get_children(self._node.key, self._manifest)
+		else
+			upstream = artifact.get_all_upstream(self._node.key, self._manifest, nil, nil)
+			downstream = artifact.get_all_downstream(self._node.key, self._manifest, nil, nil)
+		end
+		self._upstream = artifact.sort_nodes(upstream)
+		self._downstream = artifact.sort_nodes(downstream)
 		if self._catalog ~= nil then
 			self._columns = artifact.get_columns(self._node, self._catalog)
 		end
 	else
-		self._parents = {}
-		self._children = {}
+		self._upstream = {}
+		self._downstream = {}
 		self._columns = {}
 	end
 	self:render_content()
 end
 
---- @param section "children" | "parents"
+--- @param mode "direct" | "all"
+function PersistentWindow:toggle_lineage_mode(mode)
+	if mode == "direct" then
+		self._lineage_mode = "all"
+	elseif mode == "all" then
+		self._lineage_mode = "direct"
+	else
+		local error_msg = string.format("Invalid mode: %s", mode)
+		vim.notify(error_msg, vim.log.levels.ERROR, { title = "dbt.nvim Error" })
+		return
+	end
+	self:update_sections()
+	self:render_content()
+end
+
+--- @param section "downstream" | "upstream"
 function PersistentWindow:toggle_section(section)
-	if section == "parents" then
-		self._parents_collapsed = not self._parents_collapsed
-	elseif section == "children" then
-		self._children_collapsed = not self._children_collapsed
+	if section == "upstream" then
+		self._upstream_collapsed = not self._upstream_collapsed
+	elseif section == "downstream" then
+		self._downstream_collapsed = not self._downstream_collapsed
 	elseif section == "columns" then
 		self._columns_collapsed = not self._columns_collapsed
 	else
@@ -285,14 +310,30 @@ function PersistentWindow:setup_interactions()
 	-- Clear existing maps (good practice)
 	vim.api.nvim_buf_clear_namespace(self.bufnr, 0, 0, -1)
 
-	-- We pass self._win (the window ID) to the static handler function.
-	vim.api.nvim_buf_set_keymap(
-		self.bufnr,
-		"n",
-		"<CR>",
-		string.format('<Cmd>lua require("dbt.ui").handle_key_press(%d)<CR>', self._win),
-		{ noremap = true, silent = true }
-	)
+	vim.keymap.set("n", "<CR>", function()
+		self:user_action()
+	end, {
+		buffer = self.bufnr,
+		noremap = true,
+		silent = true
+	})
+
+	vim.keymap.set("n", "<Tab>", function()
+		self:toggle_lineage_mode(self._lineage_mode)
+	end, {
+		buffer = self.bufnr,
+		noremap = true,
+		silent = true
+	})
+
+	vim.keymap.set("n", "<S-Tab>", function()
+		self:toggle_lineage_mode(self._lineage_mode)
+	end, {
+		buffer = self.bufnr,
+		noremap = true,
+		silent = true
+	})
+
 end
 
 function PersistentWindow:render_content()
@@ -309,11 +350,12 @@ function PersistentWindow:render_content()
 	end
 
 	--- @param list table
-	--- @param section "parents" | "children"
+	--- @param section "upstream" | "downstream"
 	--- @param data table
 	--- @param collapsed boolean
 	local function format_nodes(list, section, data, collapsed)
-		table.insert(list, string.format("%s (%d)", section:gsub("^%l", string.upper), #data))
+		local mode_text = self._lineage_mode:gsub("^%l", string.upper)
+		table.insert(list, string.format("%s · %s (%d)", section:gsub("^%l", string.upper), mode_text, #data))
 		table.insert(index_map, { type = "header", value = section })
 		if data and #data > 0 and not collapsed then
 			local count = #data
@@ -340,10 +382,10 @@ function PersistentWindow:render_content()
 		end
 	end
 
-	format_nodes(text, "parents", self._parents, self._parents_collapsed)
+	format_nodes(text, "upstream", self._upstream, self._upstream_collapsed)
 	table.insert(text, "")
 	table.insert(index_map, { type = "noaction" })
-	format_nodes(text, "children", self._children, self._children_collapsed)
+	format_nodes(text, "downstream", self._downstream, self._downstream_collapsed)
 	table.insert(text, "")
 	table.insert(index_map, { type = "noaction" })
 	format_columns()

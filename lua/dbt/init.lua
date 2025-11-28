@@ -1,24 +1,5 @@
 local M = {}
-local factory = require("dbt.ui")
-local utils = require("dbt.utils")
-
-function M.ui()
-	local curwin = vim.api.nvim_get_current_win()
-	for _, ui in pairs(factory.persistent_window_instances) do
-		if ui.refwin == curwin then
-			ui:dispose()
-			return
-		end
-	end
-	local manifest = utils.read_json_file("target/manifest.json")
-	if not manifest then
-		error("Could not load manifest")
-	end
-	local catalog = utils.read_json_file("target/catalog.json")
-	local name = "dbtui-" .. tostring(curwin)
-	local ui = factory.new({ name = name, refwin = curwin, manifest = manifest, catalog = catalog })
-	ui:open()
-end
+local commands = require("dbt.commands")
 
 local function setup_keymaps()
 	vim.keymap.set("n", "gd", function()
@@ -39,9 +20,31 @@ local function setup_keymaps()
 end
 
 local function setup_commands()
-	vim.api.nvim_create_user_command("DBTUI", function()
-		M.ui()
-	end, {})
+	vim.api.nvim_create_user_command("DBTUI", function(opts)
+		local args = opts.fargs
+
+		if #args == 0 then
+			-- No arguments, open UI
+			commands.ui()
+		elseif args[1] == "grep" then
+			-- Remove "grep" from args and pass the rest
+			table.remove(args, 1)
+			commands.grep(args)
+		else
+			vim.notify("Unknown DBTUI subcommand: " .. args[1], vim.log.levels.ERROR)
+		end
+	end, {
+		nargs = "*",
+		complete = function(arg_lead, cmd_line, cursor_pos)
+			-- Basic completion for subcommands
+			local subcommands = { "grep" }
+			if cmd_line:match("^DBTUI%s+$") or cmd_line:match("^DBTUI%s+%w*$") then
+				return vim.tbl_filter(function(val)
+					return vim.startswith(val, arg_lead)
+				end, subcommands)
+			end
+		end,
+	})
 end
 
 function M.setup(opts)

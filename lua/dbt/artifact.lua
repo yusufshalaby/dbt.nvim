@@ -95,9 +95,11 @@ end
 --- @param node_id string
 --- @param manifest table
 --- @param visited table|nil
---- @return table<string>
-function M.get_all_downstream(node_id, manifest, visited)
+--- @param seen table|nil
+--- @return table<Node>
+function M.get_all_downstream(node_id, manifest, visited, seen)
 	visited = visited or {}
+	seen = seen or {}
 	local downstream = {}
 
 	-- Avoid cycles
@@ -109,11 +111,17 @@ function M.get_all_downstream(node_id, manifest, visited)
 	local immediate_children = manifest["child_map"][node_id] or {}
 	for _, child_id in ipairs(immediate_children) do
 		if string.find(child_id, "^model.") or string.find(child_id, "^snapshot.") then
-			table.insert(downstream, child_id)
+			-- Only add if we haven't seen this node before
+			if not seen[child_id] then
+				seen[child_id] = true
+				local node_manifest = manifest["nodes"][child_id]
+				local node = _node_processor(node_manifest)
+				table.insert(downstream, node)
+			end
 			-- Recursively get downstream of this child
-			local child_downstream = M.get_all_downstream(child_id, manifest, visited)
-			for _, desc_id in ipairs(child_downstream) do
-				table.insert(downstream, desc_id)
+			local child_downstream = M.get_all_downstream(child_id, manifest, visited, seen)
+			for _, desc_node in ipairs(child_downstream) do
+				table.insert(downstream, desc_node)
 			end
 		end
 	end
@@ -125,9 +133,11 @@ end
 --- @param node_id string
 --- @param manifest table
 --- @param visited table|nil
---- @return table<string>
-function M.get_all_upstream(node_id, manifest, visited)
+--- @param seen table|nil
+--- @return table<Node>
+function M.get_all_upstream(node_id, manifest, visited, seen)
 	visited = visited or {}
+	seen = seen or {}
 	local upstream = {}
 
 	-- Avoid cycles
@@ -140,18 +150,94 @@ function M.get_all_upstream(node_id, manifest, visited)
 	for _, parent_id in ipairs(immediate_parents) do
 		if string.find(parent_id, "^model.") or
 		   string.find(parent_id, "^seed.") or
-		   string.find(parent_id, "^snapshot.") or
-		   string.find(parent_id, "^source.") then
-			table.insert(upstream, parent_id)
+		   string.find(parent_id, "^snapshot.") then
+			-- Only add if we haven't seen this node before
+			if not seen[parent_id] then
+				seen[parent_id] = true
+				local node_manifest = manifest["nodes"][parent_id]
+				local node = _node_processor(node_manifest)
+				table.insert(upstream, node)
+			end
 			-- Recursively get upstream of this parent
-			local parent_upstream = M.get_all_upstream(parent_id, manifest, visited)
-			for _, anc_id in ipairs(parent_upstream) do
-				table.insert(upstream, anc_id)
+			local parent_upstream = M.get_all_upstream(parent_id, manifest, visited, seen)
+			for _, anc_node in ipairs(parent_upstream) do
+				table.insert(upstream, anc_node)
+			end
+		end
+		if string.find(parent_id, "^source.") then
+			-- Only add if we haven't seen this source before
+			if not seen[parent_id] then
+				seen[parent_id] = true
+				local source_manifest = manifest["sources"][parent_id]
+				local source = _source_processor(source_manifest)
+				table.insert(upstream, source)
+			end
+			-- Recursively get upstream of this source
+			local source_upstream = M.get_all_upstream(parent_id, manifest, visited, seen)
+			for _, anc_node in ipairs(source_upstream) do
+				table.insert(upstream, anc_node)
 			end
 		end
 	end
 
 	return upstream
+end
+
+--- Sort nodes by type and name following dbt conventions
+--- Order: sources -> seeds -> snapshots -> models (base -> stg -> int -> marts/other)
+--- Within each group, sort alphabetically by name
+--- @param nodes table<Node>
+--- @return table<Node>
+function M.sort_nodes(nodes)
+	local function get_type_order(node)
+		if node.type == "source" then
+			return 1
+		elseif node.type == "seed" then
+			return 2
+		elseif node.type == "snapshot" then
+			return 3
+		elseif node.type == "model" then
+			return 4
+		else
+			return 5
+		end
+	end
+
+	local function get_model_prefix_order(name)
+		if string.match(name, "^base_") then
+			return 1
+		elseif string.match(name, "^stg_") then
+			return 2
+		elseif string.match(name, "^int_") then
+			return 3
+		else
+			return 4
+		end
+	end
+
+	table.sort(nodes, function(a, b)
+		local type_order_a = get_type_order(a)
+		local type_order_b = get_type_order(b)
+
+		if type_order_a ~= type_order_b then
+			return type_order_a < type_order_b
+		end
+
+		-- If both are models, sort by prefix
+		if a.type == "model" and b.type == "model" then
+			local prefix_order_a = get_model_prefix_order(a.name)
+			local prefix_order_b = get_model_prefix_order(b.name)
+
+			if prefix_order_a ~= prefix_order_b then
+				return prefix_order_a < prefix_order_b
+			end
+		end
+
+		-- Within the same type and prefix, sort alphabetically by name
+		return a.name < b.name
+	end)
+
+	return nodes
 end
 
 ---@param node Node

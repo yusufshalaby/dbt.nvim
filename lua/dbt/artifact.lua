@@ -91,6 +91,69 @@ function M.get_children(parent_model_id, manifest)
 	return children
 end
 
+--- Get all downstream models recursively
+--- @param node_id string
+--- @param manifest table
+--- @param visited table|nil
+--- @return table<string>
+function M.get_all_downstream(node_id, manifest, visited)
+	visited = visited or {}
+	local downstream = {}
+
+	-- Avoid cycles
+	if visited[node_id] then
+		return downstream
+	end
+	visited[node_id] = true
+
+	local immediate_children = manifest["child_map"][node_id] or {}
+	for _, child_id in ipairs(immediate_children) do
+		if string.find(child_id, "^model.") or string.find(child_id, "^snapshot.") then
+			table.insert(downstream, child_id)
+			-- Recursively get downstream of this child
+			local child_downstream = M.get_all_downstream(child_id, manifest, visited)
+			for _, desc_id in ipairs(child_downstream) do
+				table.insert(downstream, desc_id)
+			end
+		end
+	end
+
+	return downstream
+end
+
+--- Get all upstream models recursively
+--- @param node_id string
+--- @param manifest table
+--- @param visited table|nil
+--- @return table<string>
+function M.get_all_upstream(node_id, manifest, visited)
+	visited = visited or {}
+	local upstream = {}
+
+	-- Avoid cycles
+	if visited[node_id] then
+		return upstream
+	end
+	visited[node_id] = true
+
+	local immediate_parents = manifest["parent_map"][node_id] or {}
+	for _, parent_id in ipairs(immediate_parents) do
+		if string.find(parent_id, "^model.") or
+		   string.find(parent_id, "^seed.") or
+		   string.find(parent_id, "^snapshot.") or
+		   string.find(parent_id, "^source.") then
+			table.insert(upstream, parent_id)
+			-- Recursively get upstream of this parent
+			local parent_upstream = M.get_all_upstream(parent_id, manifest, visited)
+			for _, anc_id in ipairs(parent_upstream) do
+				table.insert(upstream, anc_id)
+			end
+		end
+	end
+
+	return upstream
+end
+
 ---@param node Node
 ---@param catalog table
 ---@return table<Column>

@@ -1,5 +1,5 @@
 local parser = require("dbt.parser")
-local jq = require("dbt.manifest")
+local artifact = require("dbt.artifact")
 local utils = require("dbt.utils")
 
 ---@class Node
@@ -200,7 +200,7 @@ function PersistentWindow:update_node()
 	local bufnr = vim.api.nvim_win_get_buf(self.refwin)
 	local ft = vim.bo[bufnr].filetype
 	if ft == "sql" or ft == "csv" or ft == "python" then
-		self._node = jq.get_node(self.refwin, self._manifest)
+		self._node = artifact.get_node(self.refwin, self._manifest)
 	elseif ft == "yaml" then
 		self:update_yaml_candidates(true)
 	end
@@ -209,10 +209,10 @@ end
 
 function PersistentWindow:update_sections()
 	if self._node ~= nil then
-		self._parents = jq.get_parents(self._node.key, self._manifest)
-		self._children = jq.get_children(self._node.key, self._manifest)
+		self._parents = artifact.get_parents(self._node.key, self._manifest)
+		self._children = artifact.get_children(self._node.key, self._manifest)
 		if self._catalog ~= nil then
-			self._columns = jq.get_columns(self._node, self._catalog)
+			self._columns = artifact.get_columns(self._node, self._catalog)
 		end
 	else
 		self._parents = {}
@@ -371,7 +371,7 @@ function PersistentWindow:setup_autocmds()
 		callback = function()
 			local win = vim.api.nvim_get_current_win()
 			if win == self.refwin then
-				self._node = jq.get_node(self.refwin, self._manifest)
+				self._node = artifact.get_node(self.refwin, self._manifest)
 				self:update_sections()
 			end
 		end,
@@ -451,8 +451,7 @@ function ui.new(opts)
 		name = opts.name,
 		refwin = opts.refwin,
 		manifest = opts.manifest,
-		catalog = opts
-		    .catalog
+		catalog = opts.catalog
 	})
 end
 

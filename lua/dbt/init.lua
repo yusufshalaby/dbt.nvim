@@ -1,22 +1,47 @@
 local M = {}
 local commands = require("dbt.commands")
 
-local function setup_keymaps()
-	vim.keymap.set("n", "gd", function()
-		local filename = vim.fn.expand("<cfile>")
+local function dbt_tagfunc(pattern, flags, info)
+	local tags = {}
 
-		local result = ""
-		result = vim.fn.findfile(filename .. ".sql", "models/**")
-		if result == "" then
-			result = vim.fn.findfile(filename .. ".csv", "seeds/**")
-		end
+	-- Search for model files
+	local model_result = vim.fn.findfile(pattern .. ".sql", "models/**")
+	if model_result ~= "" then
+		local full_path = vim.fn.fnamemodify(model_result, ":p")
+		table.insert(tags, {
+			name = pattern,
+			filename = full_path,
+			cmd = "1",
+			kind = "m",
+		})
+	end
 
-		if result ~= "" then
-			vim.cmd("edit " .. result)
-		else
-			vim.cmd("normal! gd")
-		end
-	end)
+	-- Search for seed files
+	local seed_result = vim.fn.findfile(pattern .. ".csv", "seeds/**")
+	if seed_result ~= "" then
+		local full_path = vim.fn.fnamemodify(seed_result, ":p")
+		table.insert(tags, {
+			name = pattern,
+			filename = full_path,
+			cmd = "1",
+			kind = "s",
+		})
+	end
+
+	return tags
+end
+
+local function setup_tagfunc()
+	-- Create an autocommand to set tagfunc for SQL files in dbt projects
+	vim.api.nvim_create_autocmd("FileType", {
+		pattern = "sql",
+		callback = function()
+			-- Check if we're in a dbt project by looking for dbt_project.yml
+			if vim.fn.findfile("dbt_project.yml", ".;") ~= "" then
+				vim.opt_local.tagfunc = "v:lua.require'dbt'.tagfunc"
+			end
+		end,
+	})
 end
 
 local function setup_commands()
@@ -48,9 +73,12 @@ local function setup_commands()
 end
 
 function M.setup(opts)
-	setup_keymaps()
+	setup_tagfunc()
 	setup_commands()
 end
+
+-- Expose tagfunc for vim to call
+M.tagfunc = dbt_tagfunc
 
 -- Return the module
 return M

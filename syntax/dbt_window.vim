@@ -10,7 +10,7 @@ syn match dbtWindowTitle '^\(Model\|Seed\|Source\|Snapshot\):\s.*$'
 syn match dbtWindowHeader '^\(Upstream\|Downstream\)\s*·\s*\(Direct\|All\)\s*(\d\+)\s*$'
 syn match dbtWindowHeader '^\(Columns\)\s*(\d\+)\s*$'
 
-syn match dbtWindowItemName '^\s*[└├]╴\s*\zs[^[:space:]]\+'
+syn match dbtWindowItemName '^\s*[└├]╴\s*\zs.\{-}\ze\s\+\w\+\s*$'
 syn match dbtWindowItemType '\s\+\zs\w\+\ze\s*$'
 
 hi link dbtWindowTitle Title

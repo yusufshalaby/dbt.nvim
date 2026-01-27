@@ -34,7 +34,7 @@ end
 local function setup_tagfunc()
 	-- Create an autocommand to set tagfunc for SQL files in dbt projects
 	vim.api.nvim_create_autocmd("FileType", {
-		pattern = "sql",
+		pattern = { "sql", "yml", "yaml" },
 		callback = function()
 			-- Check if we're in a dbt project by looking for dbt_project.yml
 			if vim.fn.findfile("dbt_project.yml", ".;") ~= "" then

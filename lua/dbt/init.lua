@@ -1,5 +1,6 @@
 local M = {}
 local commands = require("dbt.commands")
+local ui = require("dbt.ui")
 
 local function dbt_tagfunc(pattern, flags, info)
 	local tags = {}
@@ -26,6 +27,19 @@ local function dbt_tagfunc(pattern, flags, info)
 			cmd = "1",
 			kind = "s",
 		})
+	end
+
+	-- Fall back to the patch_path of the current buffer's node
+	if #tags == 0 then
+		local inst = ui.get_instance_from_refwin(vim.api.nvim_get_current_win())
+		if inst and inst._node and inst._node.patch_path then
+			local line = ui.find_patch_line(inst._node.patch_path, inst._node.name) or 1
+			table.insert(tags, {
+				name = pattern,
+				filename = inst._node.patch_path,
+				cmd = tostring(line),
+			})
+		end
 	end
 
 	return tags

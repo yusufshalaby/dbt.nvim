@@ -277,24 +277,36 @@ function PersistentWindow:go_to_path(node)
 	-- TODO error handling
 end
 
+--- Find the line number of `- name: <name>` in the given yml file.
+--- Loads the buffer if needed. Returns nil if not found.
+--- @param patch_path string
+--- @param name string
+--- @return integer?
+function ui.find_patch_line(patch_path, name)
+	local bufnr = vim.fn.bufnr(patch_path, true)
+	if bufnr <= 0 then return nil end
+	if not vim.api.nvim_buf_is_loaded(bufnr) then
+		vim.fn.bufload(bufnr)
+	end
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local pattern = "^%s*%-%s+name:%s*['\"]?" .. vim.pesc(name) .. "['\"]?%s*$"
+	for i, line in ipairs(lines) do
+		if line:match(pattern) then return i end
+	end
+	return nil
+end
+
 --- @param node Node
 function PersistentWindow:go_to_patch_path(node)
-	if node.patch_path then
-		local modelbufnr = vim.fn.bufnr(node.patch_path, true)
-		if modelbufnr > 0 then
-			vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
-			-- Find the line with `- name: {node.name}` and position cursor there
-			local lines = vim.api.nvim_buf_get_lines(modelbufnr, 0, -1, false)
-			local pattern = "^%s*%-%s+name:%s*['\"]?" .. vim.pesc(node.name) .. "['\"]?%s*$"
-			for i, line in ipairs(lines) do
-				if line:match(pattern) then
-					vim.api.nvim_win_set_cursor(self.refwin, { i, 0 })
-					break
-				end
-			end
-			vim.api.nvim_set_current_win(self.refwin)
-		end
+	if not node.patch_path then return end
+	local modelbufnr = vim.fn.bufnr(node.patch_path, true)
+	if modelbufnr <= 0 then return end
+	vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
+	local line = ui.find_patch_line(node.patch_path, node.name)
+	if line then
+		vim.api.nvim_win_set_cursor(self.refwin, { line, 0 })
 	end
+	vim.api.nvim_set_current_win(self.refwin)
 end
 
 function PersistentWindow:user_action()
@@ -483,6 +495,15 @@ end
 -- @return PersistentWindow|nil
 function ui.get_instance_from_win(win_id)
 	return ui.persistent_window_instances[win_id]
+end
+
+--- Get the instance whose refwin matches the given window ID.
+-- @param refwin number The source window ID
+-- @return PersistentWindow|nil
+function ui.get_instance_from_refwin(refwin)
+	for _, inst in pairs(ui.persistent_window_instances) do
+		if inst.refwin == refwin then return inst end
+	end
 end
 
 --- STATIC HANDLER: Centralized function called directly by the keymap.

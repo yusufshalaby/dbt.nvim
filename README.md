@@ -110,10 +110,10 @@ The plugin intelligently detects which dbt node you're working on by:
 
 ## Supported Node Types
 
-- **Models** - SQL transformations
-- **Seeds** - CSV data files
-- **Sources** - External data sources
-- **Snapshots** - Type-2 slowly changing dimensions
+- **Models**
+- **Seeds**
+- **Sources**
+- **Snapshots**
 
 ## Configuration
 

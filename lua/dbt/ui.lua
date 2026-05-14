@@ -283,7 +283,16 @@ function PersistentWindow:go_to_patch_path(node)
 		local modelbufnr = vim.fn.bufnr(node.patch_path, true)
 		if modelbufnr > 0 then
 			vim.api.nvim_win_set_buf(self.refwin, modelbufnr)
-			-- TODO error handling
+			-- Find the line with `- name: {node.name}` and position cursor there
+			local lines = vim.api.nvim_buf_get_lines(modelbufnr, 0, -1, false)
+			local pattern = "^%s*%-%s+name:%s*['\"]?" .. vim.pesc(node.name) .. "['\"]?%s*$"
+			for i, line in ipairs(lines) do
+				if line:match(pattern) then
+					vim.api.nvim_win_set_cursor(self.refwin, { i, 0 })
+					break
+				end
+			end
+			vim.api.nvim_set_current_win(self.refwin)
 		end
 	end
 end

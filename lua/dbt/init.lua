@@ -1,6 +1,24 @@
 local M = {}
 local commands = require("dbt.commands")
 local ui = require("dbt.ui")
+local utils = require("dbt.utils")
+local artifact = require("dbt.artifact")
+
+--- Resolve the node for the current buffer.
+--- Reuses an open PersistentWindow's cached node if present; otherwise reads
+--- target/manifest.json from disk.
+--- @param win integer
+--- @return Node?
+local function get_current_node(win)
+	local inst = ui.get_instance_from_refwin(win)
+	if inst and inst._node and inst._node.key then
+		return inst._node
+	end
+	local manifest = utils.read_json_file("target/manifest.json")
+	if not manifest then return nil end
+	local node = artifact.get_node(win, manifest)
+	if node and node.key then return node end
+end
 
 local function dbt_tagfunc(pattern, flags, info)
 	local tags = {}
@@ -31,12 +49,12 @@ local function dbt_tagfunc(pattern, flags, info)
 
 	-- Fall back to the patch_path of the current buffer's node
 	if #tags == 0 then
-		local inst = ui.get_instance_from_refwin(vim.api.nvim_get_current_win())
-		if inst and inst._node and inst._node.patch_path then
-			local line = ui.find_patch_line(inst._node.patch_path, inst._node.name) or 1
+		local node = get_current_node(vim.api.nvim_get_current_win())
+		if node and node.patch_path then
+			local line = ui.find_patch_line(node.patch_path, node.name) or 1
 			table.insert(tags, {
 				name = pattern,
-				filename = inst._node.patch_path,
+				filename = node.patch_path,
 				cmd = tostring(line),
 			})
 		end
